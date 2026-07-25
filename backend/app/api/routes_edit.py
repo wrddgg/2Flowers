@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
 from app.repositories.bouquet_repository import get_bouquet_repository
+from app.repositories.user_cache_repository import get_user_cache_repository
 from app.schemas.bouquet import EditBouquetRequest, EditBouquetResponse, FlowerInfo
 from app.services.bouquet_editor import BouquetEditor
+from app.services.user_cache_service import UserCacheService
 
 
 router = APIRouter(prefix="/api/bouquet", tags=["edit"])
@@ -32,9 +34,21 @@ def edit_bouquet(request: EditBouquetRequest) -> EditBouquetResponse:
     result = bouquet_editor.edit(source, request)
     bouquet_repository.save_one(result)
 
-    return EditBouquetResponse(
+    response = EditBouquetResponse(
         new_result_id=result.result_id,
         image_url=result.image_url,
         summary=result.summary,
         result=result,
     )
+    if request.user_id:
+        UserCacheService(get_user_cache_repository()).save_progress(
+            user_id=request.user_id,
+            current_page="edit",
+            result_id=result.result_id,
+            draft={
+                "source_result_id": request.result_id,
+                "action": request.action,
+                "instruction": request.instruction,
+            },
+        )
+    return response

@@ -11,6 +11,7 @@ class SelectionBox(BaseModel):
 
 
 class AnalyzeInputRequest(BaseModel):
+    user_id: str = ""
     content_id: str = Field(min_length=1)
     image_url: str = Field(min_length=1)
     selection_box: SelectionBox

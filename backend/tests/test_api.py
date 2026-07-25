@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.repositories.bouquet_repository import get_bouquet_repository
 from app.repositories.content_repository import get_content_repository
+from app.repositories.user_cache_repository import get_user_cache_repository
 from app.schemas.bouquet import BouquetResult, FlowerInfo, GenerateBouquetRequest
 from app.schemas.input import AnalyzeInputRequest, SelectionBox
 from app.schemas.semantic import SemanticResult
@@ -32,9 +33,11 @@ def _force_test_runtime(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("APP_RUNTIME_MODE", "test")
     get_semantic_recognizer.cache_clear()
     get_image_generation_provider.cache_clear()
+    get_user_cache_repository.cache_clear()
     yield
     get_semantic_recognizer.cache_clear()
     get_image_generation_provider.cache_clear()
+    get_user_cache_repository.cache_clear()
 
 
 def _semantic_from_asset_group(group: dict, mode: str) -> SemanticResult:
@@ -497,6 +500,124 @@ def test_emotion_remake_preview_applies_budget_and_season_substitutions() -> Non
     assert "11 月" in data["plan"]["seasonality_note"]
     assert "减少花材种类与总支数" in "".join(data["plan"]["preserve_points"])
     assert "已处理的关键替代包括" in data["plan"]["materials_note"]
+
+
+def test_user_cache_progress_can_be_saved_and_restored() -> None:
+    upsert_response = client.post(
+        "/api/user-cache/progress",
+        json={
+            "user_id": "demo_user_1",
+            "state": {
+                "current_page": "bouquet",
+                "mode": "scene",
+                "content_id": "scene_window_rain",
+                "request_id": "req_demo",
+                "result_id": "result_demo",
+                "result_ids": ["result_demo"],
+                "draft": {
+                    "selected_scene": "庆祝纪念",
+                    "selected_style": "东方留白",
+                },
+            },
+        },
+    )
+    assert upsert_response.status_code == 200
+    upsert_data = upsert_response.json()
+    assert upsert_data["user_id"] == "demo_user_1"
+    assert upsert_data["state"]["current_page"] == "bouquet"
+    assert upsert_data["state"]["draft"]["selected_style"] == "东方留白"
+
+    get_response = client.get("/api/user-cache/progress", params={"user_id": "demo_user_1"})
+    assert get_response.status_code == 200
+    data = get_response.json()
+    assert data["state"]["result_id"] == "result_demo"
+    assert data["state"]["draft"]["selected_scene"] == "庆祝纪念"
+
+
+def test_user_cache_auto_tracks_progress_when_user_id_is_provided() -> None:
+    analyze_response = client.post(
+        "/api/input/analyze",
+        json={
+            "user_id": "auto_track_user",
+            "content_id": "scene_001",
+            "image_url": "/mock/assets/placeholder-scene.png",
+            "selection_box": {"x": 10, "y": 20, "width": 200, "height": 150},
+            "voice_text": "把这场雨变成花，送给刚升职的朋友，别太甜",
+        },
+    )
+    assert analyze_response.status_code == 200
+    semantic_result = analyze_response.json()["semantic_result"]
+
+    generate_response = client.post(
+        "/api/bouquet/generate",
+        json={
+            "user_id": "auto_track_user",
+            "mode": "scene",
+            "semantic_result": semantic_result,
+            "reference_strategy": "light",
+            "selected_reference_ids": ["flower_blue_white"],
+            "selected_scene": "庆祝纪念",
+            "selected_style": "东方留白",
+        },
+    )
+    assert generate_response.status_code == 200
+    results = generate_response.json()["results"]
+
+    progress_response = client.get("/api/user-cache/progress", params={"user_id": "auto_track_user"})
+    assert progress_response.status_code == 200
+    progress = progress_response.json()["state"]
+    assert progress["current_page"] == "bouquet"
+    assert progress["result_id"] == results[0]["result_id"]
+    assert progress["result_ids"]
+    assert progress["draft"]["selected_style"] == "东方留白"
+
+
+def test_user_cache_can_save_and_list_saved_bouquet_records() -> None:
+    generate_response = client.post(
+        "/api/bouquet/generate",
+        json={
+            "user_id": "record_user",
+            "mode": "scene",
+            "semantic_result": {
+                "mode": "scene",
+                "subject_tags": ["窗边雨幕"],
+                "scene_tags": ["窗边", "雨天"],
+                "emotion_tags": ["克制", "轻治愈"],
+                "visual_tags": ["蓝白", "留白"],
+                "color_palette": [],
+                "relation_tags": ["朋友"],
+                "use_intent": "表达氛围",
+                "semantic_summary": "一个偏冷感、克制、治愈的场景输入。",
+            },
+            "reference_strategy": "light",
+            "selected_reference_ids": ["flower_blue_white"],
+        },
+    )
+    assert generate_response.status_code == 200
+    result = generate_response.json()["results"][0]
+
+    save_response = client.post(
+        "/api/user-cache/records",
+        json={
+            "user_id": "record_user",
+            "result_id": result["result_id"],
+            "card_image_url": "/uploads/card/demo_card.jpg",
+            "source_context": "窗边雨夜",
+            "scene_reason": "保留了夜色和克制感",
+        },
+    )
+    assert save_response.status_code == 200
+    saved = save_response.json()["record"]
+    assert saved["result_id"] == result["result_id"]
+    assert saved["bouquet_image_url"] == result["image_url"]
+    assert saved["card_image_url"] == "/uploads/card/demo_card.jpg"
+
+    list_response = client.get("/api/user-cache/records", params={"user_id": "record_user"})
+    assert list_response.status_code == 200
+    records = list_response.json()["records"]
+    assert len(records) == 1
+    assert records[0]["title"] == result["title"]
+    assert records[0]["scene_reason"] == "保留了夜色和克制感"
 
 
 def test_not_found_paths_are_stable() -> None:

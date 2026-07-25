@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
 from app.repositories.content_repository import get_content_repository
+from app.repositories.user_cache_repository import get_user_cache_repository
 from app.schemas.input import AnalyzeInputRequest, AnalyzeInputResponse
 from app.services.semantic_recognizer import get_semantic_recognizer
+from app.services.user_cache_service import UserCacheService
 from app.services.vision_semantic_extractor import VisionSemanticExtractor
 from app.utils.text import new_id
 
@@ -32,7 +34,7 @@ def analyze_input(request: AnalyzeInputRequest) -> AnalyzeInputResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return AnalyzeInputResponse(
+    response = AnalyzeInputResponse(
         request_id=new_id("req"),
         mode_result=insights.mode_result,
         semantic_result=insights.semantic_result,
@@ -43,3 +45,17 @@ def analyze_input(request: AnalyzeInputRequest) -> AnalyzeInputResponse:
         recommended_interpretation_id=insights.recommended_interpretation_id,
         normalized_input=request,
     )
+    if request.user_id:
+        UserCacheService(get_user_cache_repository()).save_progress(
+            user_id=request.user_id,
+            current_page="analysis",
+            mode=insights.mode_result.detected_mode,
+            content_id=request.content_id,
+            request_id=response.request_id,
+            draft={
+                "image_url": request.image_url,
+                "voice_text": request.voice_text,
+                "recommended_interpretation_id": insights.recommended_interpretation_id or "",
+            },
+        )
+    return response

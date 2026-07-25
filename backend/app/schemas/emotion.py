@@ -35,6 +35,7 @@ class OwnCard(BaseModel):
 
 
 class EmotionBuildRequest(BaseModel):
+    user_id: str = ""
     result_id: str
     mode: ModeType
     voice_context: str = ""
@@ -67,6 +68,7 @@ class RemakePlan(BaseModel):
 
 
 class EmotionRemakePreviewRequest(BaseModel):
+    user_id: str = ""
     result_id: str
     mode: ModeType
     option_type: str

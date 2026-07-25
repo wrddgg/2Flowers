@@ -13,6 +13,7 @@ class ComparePanel(BaseModel):
 
 
 class GenerateTutorialRequest(BaseModel):
+    user_id: str = ""
     bouquet_image: str = ""
     flowers: list[str] = Field(default_factory=list)
     with_images: bool = True
@@ -34,6 +35,8 @@ class TutorialStep(BaseModel):
 
 
 class GenerateCardRequest(BaseModel):
+    user_id: str = ""
+    result_id: str = ""
     source: str | None = None
     before: str
     after: str

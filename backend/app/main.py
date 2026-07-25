@@ -10,6 +10,7 @@ from app.api.routes_emotion import router as emotion_router
 from app.api.routes_generate import router as generate_router
 from app.api.routes_input import router as input_router
 from app.api.routes_reference import router as reference_router
+from app.api.routes_user_cache import router as user_cache_router
 from app.api.routes_workflow import router as workflow_router
 from app.config.env import load_environment
 
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(edit_router)
     app.include_router(image_edit_router)
     app.include_router(emotion_router)
+    app.include_router(user_cache_router)
     app.include_router(workflow_router)
 
     app.mount("/mock/assets", StaticFiles(directory=MOCK_ASSET_DIR), name="mock-assets")

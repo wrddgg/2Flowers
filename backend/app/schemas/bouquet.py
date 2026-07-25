@@ -97,6 +97,7 @@ class GenerationVariantPlan(BaseModel):
 
 
 class GenerateBouquetRequest(BaseModel):
+    user_id: str = ""
     mode: ModeType
     semantic_result: SemanticResult
     reference_strategy: ReferenceStrategy = "light"
@@ -121,6 +122,7 @@ class EditTarget(BaseModel):
 
 
 class EditBouquetRequest(BaseModel):
+    user_id: str = ""
     result_id: str
     action: EditAction
     target: EditTarget = Field(default_factory=EditTarget)

@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException
 
 from app.repositories.bouquet_repository import get_bouquet_repository
 from app.repositories.content_repository import get_content_repository
+from app.repositories.user_cache_repository import get_user_cache_repository
 from app.schemas.bouquet import GenerateBouquetRequest, GenerateBouquetResponse
 from app.services.image_generation_provider import get_image_generation_provider
+from app.services.user_cache_service import UserCacheService
 
 
 router = APIRouter(prefix="/api/bouquet", tags=["bouquet"])
@@ -23,4 +25,18 @@ def generate_bouquet(request: GenerateBouquetRequest) -> GenerateBouquetResponse
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     bouquet_repository.save_many(results)
 
-    return GenerateBouquetResponse(results=results, plan_used=plan_used)
+    response = GenerateBouquetResponse(results=results, plan_used=plan_used)
+    if request.user_id:
+        UserCacheService(get_user_cache_repository()).save_progress(
+            user_id=request.user_id,
+            current_page="bouquet",
+            mode=request.mode,
+            result_id=results[0].result_id if results else "",
+            result_ids=[item.result_id for item in results],
+            draft={
+                "selected_scene": request.selected_scene or "",
+                "selected_style": request.selected_style or "",
+                "selected_reference_ids": list(request.selected_reference_ids),
+            },
+        )
+    return response
