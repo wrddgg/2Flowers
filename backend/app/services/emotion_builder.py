@@ -73,8 +73,10 @@ class EmotionBuilder:
                     title=label,
                     bouquet_group_id=str(candidate["reference_id"]),
                     bouquet_title=str(candidate["title"]),
-                    image_url=str(candidate["cover_url"]),
                     reason=self._build_option_reason(option_type, candidate, voice_context),
+                    generation_brief=self._build_generation_brief(option_type, candidate, voice_context),
+                    should_generate_after_select=True,
+                    image_url="",
                     tags=list(candidate.get("visual_tags", []))[:2] + list(candidate.get("emotion_tags", []))[:1],
                 )
             )
@@ -149,3 +151,22 @@ class EmotionBuilder:
         if option_type == "budget_friendly":
             return f"{bouquet_title} 更偏轻量和日常，适合做预算更友好的现实版本。"
         return f"{bouquet_title} 更适合摆放或轻量拥有，适合转成桌花或小体量版本。"
+
+    def _build_generation_brief(self, option_type: str, candidate: dict[str, object], voice_context: str) -> str:
+        bouquet_title = str(candidate.get("title", "当前方案"))
+        scene_tags = list(candidate.get("scene_tags", []))
+        visual_tags = list(candidate.get("visual_tags", []))
+        emotion_tags = list(candidate.get("emotion_tags", []))
+        brief_parts = [f"以“{bouquet_title}”为现实承接方向"]
+        if option_type == "same_feeling":
+            brief_parts.append("保留原生成花图的主要情绪和色彩关系")
+        elif option_type == "budget_friendly":
+            brief_parts.append("在保留核心感觉的前提下收束预算与材料复杂度")
+        else:
+            brief_parts.append("把当前花束转成更适合日常摆放和轻量拥有的版本")
+        if voice_context:
+            brief_parts.append(f"兼顾用户语境“{voice_context}”")
+        tags = scene_tags[:1] + visual_tags[:1] + emotion_tags[:1]
+        if tags:
+            brief_parts.append(f"重点保留 { '、'.join(tags) }")
+        return "，".join(brief_parts) + "。"

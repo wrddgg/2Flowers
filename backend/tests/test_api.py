@@ -67,6 +67,10 @@ def test_full_demo_flow() -> None:
     assert analyze_data["recommended_interpretation_id"]
 
     semantic_result = analyze_data["semantic_result"]
+    assert semantic_result["color_swatches"]
+    assert semantic_result["color_swatches"][0]["hex"].startswith("#")
+    if analyze_data["interpretation_options"]:
+        assert analyze_data["interpretation_options"][0]["semantic_result"]["color_swatches"]
     reference_response = client.post(
         "/api/reference/search",
         json={
@@ -87,7 +91,9 @@ def test_full_demo_flow() -> None:
             "mode": "scene",
             "semantic_result": semantic_result,
             "reference_strategy": "light",
-            "selected_reference_ids": [references[0]["reference_id"]]
+            "selected_reference_ids": [references[0]["reference_id"]],
+            "selected_scene": "庆祝纪念",
+            "selected_style": "东方留白",
         },
     )
     assert generate_response.status_code == 200
@@ -97,6 +103,16 @@ def test_full_demo_flow() -> None:
     assert len(generate_data["plan_used"]) == 3
     assert results[0]["image_url"].startswith("/library/assets/")
     assert results[0]["reference_used"][0]["cover_url"].startswith("/library/assets/")
+    assert results[0]["scene_preset"] == "庆祝纪念"
+    assert results[0]["style_preset"] == "东方留白"
+    assert results[0]["explanation"]
+    assert results[0]["fit_scenes"]
+    assert results[0]["usage_goal"]
+    assert results[0]["reality_advice"]
+    assert results[0]["flowers"][0]["point"]
+    assert max(len(item["flowers"]) for item in results) >= 3
+    assert [flower["name"] for flower in results[0]["flowers"]] != [flower["name"] for flower in results[1]["flowers"]]
+    assert generate_data["plan_used"][0]["scene_preset"] == "庆祝纪念"
 
     result_id = results[0]["result_id"]
     flower_id = results[0]["flowers"][0]["flower_id"]
@@ -127,6 +143,8 @@ def test_full_demo_flow() -> None:
     )
     assert emotion_response.status_code == 200
     assert "save_card" in emotion_response.json()
+    assert emotion_response.json()["own_card"]["candidates"][0]["generation_brief"]
+    assert emotion_response.json()["own_card"]["candidates"][0]["image_url"] == ""
 
 
 def test_flower_mode_analysis_and_strong_reference_generation() -> None:
@@ -177,6 +195,9 @@ def test_flower_mode_analysis_and_strong_reference_generation() -> None:
     assert results[0]["image_url"].startswith("/library/assets/")
     assert results[0]["reference_used"][0]["title"]
     assert results[0]["reference_used"][0]["cover_url"].startswith("/library/assets/")
+    assert results[0]["flowers"][0]["point"]
+    assert len(results[0]["flowers"]) >= 2
+    assert [flower["name"] for flower in results[0]["flowers"]] != [flower["name"] for flower in results[1]["flowers"]]
 
 
 def test_reference_matching_prefers_best_semantic_fit() -> None:
@@ -357,7 +378,8 @@ def test_life_mode_delete_flower_and_build_emotion_cards() -> None:
     assert "不会显得过分亲密" in emotion_data["gift_card"]["reason"]
     assert emotion_data["save_card"]["copy"]
     assert len(emotion_data["own_card"]["candidates"]) == 3
-    assert emotion_data["own_card"]["candidates"][0]["image_url"].startswith("/library/assets/")
+    assert emotion_data["own_card"]["candidates"][0]["image_url"] == ""
+    assert emotion_data["own_card"]["candidates"][0]["generation_brief"]
     assert emotion_data["own_card"]["candidates"][0]["bouquet_group_id"]
 
 
@@ -542,12 +564,21 @@ def test_generate_card_returns_local_upload_url() -> None:
     tiny_jpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBxAQDxAQEA8QEA8PDw8PDw8PDw8PDw8PFREWFhURFRUYHSggGBolHRUVITEhJSkrLi4uFx8zODMsNygtLisBCgoKDg0OGxAQGy0lICUtLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLf/AABEIAAEAAQMBIgACEQEDEQH/xAAXAAADAQAAAAAAAAAAAAAAAAAAAQID/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEAMQAAAB6AAAAP/EABQQAQAAAAAAAAAAAAAAAAAAACD/2gAIAQEAAT8Af//EABQRAQAAAAAAAAAAAAAAAAAAACD/2gAIAQIBAT8Af//EABQRAQAAAAAAAAAAAAAAAAAAACD/2gAIAQMBAT8Af//Z"
     response = client.post(
         "/api/generate-card",
-        json={"before": tiny_jpeg, "after": tiny_jpeg, "title": "测试花束"},
+        json={
+            "source": tiny_jpeg,
+            "before": tiny_jpeg,
+            "after": tiny_jpeg,
+            "title": "测试花束",
+            "source_context": "窗边雨夜",
+            "scene_reason": "保留了夜色和克制感",
+        },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 0
     assert data["data"]["card_image"].startswith("/uploads/card/")
+    assert data["data"]["compare_layout"] == "triple"
+    assert data["data"]["scene_reason"]
 
 
 def test_semantic_api_contract_request_can_be_built() -> None:

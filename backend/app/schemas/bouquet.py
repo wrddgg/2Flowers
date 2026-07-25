@@ -14,6 +14,8 @@ CompositionStyle = Literal["mass", "layered", "airy", "focal"]
 MaterialRichness = Literal["single", "limited", "mixed"]
 ColorStrategy = Literal["single_tone", "dual_tone", "accent"]
 BouquetDensity = Literal["dense", "medium", "airy"]
+ScenePreset = Literal["礼宾赠礼", "庆祝纪念", "恋人赠礼", "日常居家"]
+StylePreset = Literal["东方留白", "法式浪漫", "清新自然", "现代艺术"]
 
 
 class FlowerInfo(BaseModel):
@@ -22,6 +24,8 @@ class FlowerInfo(BaseModel):
     type: str
     meaning: str
     role: str
+    point: list[float] = Field(default_factory=list, min_length=2, max_length=2)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class ReferenceUsage(BaseModel):
@@ -43,6 +47,12 @@ class BouquetResult(BaseModel):
     generation_focus: str = ""
     reference_used: list[ReferenceUsage] = Field(default_factory=list)
     flowers: list[FlowerInfo] = Field(default_factory=list)
+    scene_preset: ScenePreset | None = None
+    style_preset: StylePreset | None = None
+    explanation: str = ""
+    fit_scenes: list[str] = Field(default_factory=list)
+    usage_goal: str = ""
+    reality_advice: str = ""
 
 
 class GenerationVariantPlan(BaseModel):
@@ -57,6 +67,12 @@ class GenerationVariantPlan(BaseModel):
     dominant_flower_ratio: float = Field(default=0.7, ge=0.4, le=1.0)
     color_strategy: ColorStrategy = "dual_tone"
     bouquet_density: BouquetDensity = "medium"
+    scene_preset: ScenePreset | None = None
+    style_preset: StylePreset | None = None
+    explanation: str = ""
+    fit_scenes: list[str] = Field(default_factory=list)
+    usage_goal: str = ""
+    reality_advice: str = ""
 
 
 class GenerateBouquetRequest(BaseModel):
@@ -68,6 +84,8 @@ class GenerateBouquetRequest(BaseModel):
     generation_goals: list[str] = Field(default_factory=list)
     selected_interpretation_id: str | None = None
     selected_interpretation_label: str | None = None
+    selected_scene: ScenePreset | None = None
+    selected_style: StylePreset | None = None
     variant_plans: list[GenerationVariantPlan] = Field(default_factory=list)
 
 

@@ -72,12 +72,11 @@ class BouquetGenerator:
         if reference_strategy == "none" or not selected_reference:
             return f"{base_summary}，当前未使用外部参考，主要依据输入语义生成。"
 
-        reference_title = str(selected_reference["title"])
         strategy_text = {
             "light": "轻参考了真实花内容",
             "strong": "强参考了真实花内容",
         }.get(reference_strategy, "参考了真实花内容")
-        return f"{base_summary}，{strategy_text}“{reference_title}”，并保持了“{semantic_summary}”中的核心感觉。"
+        return f"{base_summary}，{strategy_text}中的配色、结构或气质方向，并保持了“{semantic_summary}”中的核心感觉。"
 
     def _pick_best_reference(
         self,

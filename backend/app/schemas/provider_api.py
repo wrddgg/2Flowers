@@ -77,6 +77,8 @@ class ImageGenerationApiRequest(BaseModel):
     creative_mode: Literal["commercial", "expressive", "mixed"] = "mixed"
     generation_goals: list[str] = Field(default_factory=list)
     selected_interpretation_label: str | None = None
+    selected_scene: str | None = None
+    selected_style: str | None = None
     selected_references: list[ProviderReferenceInput] = Field(default_factory=list)
     variant_plans: list[GenerationVariantPlan] = Field(default_factory=list)
     generation_constraints: ImageGenerationConstraints = Field(default_factory=ImageGenerationConstraints)

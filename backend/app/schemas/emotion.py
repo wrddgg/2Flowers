@@ -20,8 +20,10 @@ class OwnOption(BaseModel):
     title: str
     bouquet_group_id: str
     bouquet_title: str
-    image_url: str
     reason: str
+    generation_brief: str = ""
+    should_generate_after_select: bool = True
+    image_url: str = ""
     tags: list[str] = Field(default_factory=list)
 
 

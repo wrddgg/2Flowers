@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.schemas.mode import ModeType
 from app.schemas.semantic import SemanticResult
+from app.utils.color_palette import build_color_swatches
 from app.utils.text import contains_any
 
 
@@ -78,6 +79,7 @@ class SemanticParser:
             emotion_tags=_unique(emotion_tags),
             visual_tags=_unique(visual_tags),
             color_palette=color_palette,
+            color_swatches=build_color_swatches(_unique(color_palette), _unique(visual_tags)),
             relation_tags=_unique(relation_tags),
             use_intent=use_intent,
             semantic_summary=summary,

@@ -16,6 +16,10 @@ def resolve_local_image_path(image_url: str) -> Path | None:
     if not candidate:
         return None
 
+    # Data URLs are already provider-ready and can be very long on Windows.
+    if candidate.startswith("data:"):
+        return None
+
     if candidate.startswith("/library/assets/"):
         asset_name = Path(candidate).name
         asset_path = LIBRARY_ASSET_DIR / asset_name

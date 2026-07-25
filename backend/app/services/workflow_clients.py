@@ -16,7 +16,7 @@ from app.config.runtime import is_test_mode
 def upload_root() -> Path:
     configured = Path(os.getenv("UPLOAD_DIR", "./uploads"))
     if not configured.is_absolute():
-        configured = Path(__file__).resolve().parents[2] / configured
+        configured = Path(__file__).resolve().parents[3] / configured
     return configured.resolve()
 
 

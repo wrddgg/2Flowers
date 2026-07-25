@@ -72,7 +72,7 @@ def build_tutorial_generation_prompt(*, flowers: list[str], plan: dict[str, obje
     )
 
 
-def build_share_planner_prompt(*, title: str) -> str:
+def build_share_planner_prompt(*, title: str, source_context: str = "", scene_reason: str = "") -> str:
     return (
         "请先规划这张分享卡片的表达策略。\n"
         "目标：让“万物生花”的分享文案更像经过策划的内容，而不是模板化 slogan。\n"
@@ -80,20 +80,26 @@ def build_share_planner_prompt(*, title: str) -> str:
         "1. 决定主表达轴：收藏感 / 礼物感 / 情绪转译感 三者取其一为主。\n"
         "2. 决定文案语气：克制 / 温柔 / 轻庆祝 / 轻治愈 中选择最合适的主语气。\n"
         "3. 决定 BGM mood，避免风格发散。\n"
+        "4. 需要额外给出一句 why_it_fits_scene，说明这束花为什么适合当前素材场景。\n"
         "4. advice_for_copywriter 需要提醒后续文案专家保持简洁、有记忆点、不过度煽情。\n"
         f"花束标题：{title}\n"
-        '输出 JSON：{"primary_angle":"...","tone":"...","bgm_mood":"...","advice_for_copywriter":"..."}'
+        f"素材场景：{source_context or '未提供'}\n"
+        f"已知适配原因：{scene_reason or '未提供'}\n"
+        '输出 JSON：{"primary_angle":"...","tone":"...","bgm_mood":"...","why_it_fits_scene":"...","advice_for_copywriter":"..."}'
     )
 
 
-def build_share_generation_prompt(*, title: str, plan: dict[str, object]) -> str:
+def build_share_generation_prompt(*, title: str, plan: dict[str, object], source_context: str = "", scene_reason: str = "") -> str:
     return (
         "请根据已经确定的分享策略，生成最终社交分享结果。\n"
         "要求：\n"
         "1. share_text 一句话，温柔治愈，带 #万物生花，不超过 40 字。\n"
         "2. bgm_options 返回 3 首，id 只能是 bgm1/bgm2/bgm3。\n"
         "3. 不要套模板式空话，要体现“把画面转成花束”的独特感。\n"
+        "4. 输出 scene_reason，一句话解释这束花为什么适合当前素材场景。\n"
         f"花束标题：{title}\n"
+        f"素材场景：{source_context or '未提供'}\n"
+        f"已知适配原因：{scene_reason or '未提供'}\n"
         f"分享规划：{json.dumps(plan, ensure_ascii=False)}\n"
-        '输出 JSON：{"share_text":"...","bgm_options":[{"id":"bgm1","name":"...","artist":"..."}]}'
+        '输出 JSON：{"share_text":"...","scene_reason":"...","bgm_options":[{"id":"bgm1","name":"...","artist":"..."}]}'
     )
