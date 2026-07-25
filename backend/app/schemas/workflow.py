@@ -20,9 +20,12 @@ class TutorialStep(BaseModel):
 
 
 class GenerateCardRequest(BaseModel):
+    source: str | None = None
     before: str
     after: str
     title: str | None = None
+    source_context: str | None = None
+    scene_reason: str | None = None
 
 
 class WrappedResponse(BaseModel):

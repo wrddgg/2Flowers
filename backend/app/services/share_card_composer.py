@@ -10,21 +10,32 @@ from PIL import Image, ImageDraw, ImageFile, ImageFont
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-def compose_card(before_dataurl: str, after_dataurl: str, title: str, out_path: str) -> str:
+def compose_card(source_dataurl: str, before_dataurl: str, after_dataurl: str, title: str, out_path: str) -> str:
     width, height = 1080, 1920
-    half_height = height // 2
+    panel_gap = 24
+    outer_pad = 36
+    top_pad = 120
+    bottom_pad = 120
 
-    before = _cover_crop(_load_image_from_dataurl(before_dataurl), width, half_height)
-    after = _cover_crop(_load_image_from_dataurl(after_dataurl), width, half_height)
+    panel_count = 3 if source_dataurl else 2
+    available_height = height - top_pad - bottom_pad - panel_gap * (panel_count - 1)
+    panel_height = available_height // panel_count
+
+    panels = []
+    if source_dataurl:
+        panels.append(("输入素材", _contain_frame(_load_image_from_dataurl(source_dataurl), width - outer_pad * 2, panel_height)))
+    panels.append(("AI 生花", _contain_frame(_load_image_from_dataurl(before_dataurl), width - outer_pad * 2, panel_height)))
+    panels.append(("自制复刻", _contain_frame(_load_image_from_dataurl(after_dataurl), width - outer_pad * 2, panel_height)))
 
     card = Image.new("RGB", (width, height), (250, 248, 243))
-    card.paste(before, (0, 0))
-    card.paste(after, (0, half_height))
-
     draw = ImageDraw.Draw(card)
     label_font = _get_font(32)
-    _draw_pill(draw, 36, 36, "原画面", label_font)
-    _draw_pill(draw, 36, half_height + 36, "我的作品", label_font)
+
+    cursor_y = top_pad
+    for label, panel in panels:
+        card.paste(panel, (outer_pad, cursor_y))
+        _draw_pill(draw, outer_pad + 24, cursor_y + 24, label, label_font)
+        cursor_y += panel_height + panel_gap
 
     sub_font = _get_font(30)
     sub = "把任何画面，变成一束花"
@@ -69,13 +80,20 @@ def save_dataurl_image(data_url: str, out_path: str) -> str:
     return str(target)
 
 
-def _cover_crop(image: Image.Image, target_width: int, target_height: int) -> Image.Image:
+def _contain_frame(image: Image.Image, target_width: int, target_height: int) -> Image.Image:
+    frame = Image.new("RGB", (target_width, target_height), (243, 239, 233))
+    inner_pad = 12
+    inner_width = max(1, target_width - inner_pad * 2)
+    inner_height = max(1, target_height - inner_pad * 2)
     width, height = image.size
-    scale = max(target_width / width, target_height / height)
-    resized = image.resize((int(width * scale + 0.5), int(height * scale + 0.5)), Image.LANCZOS)
-    left = (resized.size[0] - target_width) // 2
-    top = (resized.size[1] - target_height) // 2
-    return resized.crop((left, top, left + target_width, top + target_height))
+    scale = min(inner_width / width, inner_height / height)
+    resized = image.resize((max(1, int(width * scale + 0.5)), max(1, int(height * scale + 0.5))), Image.LANCZOS)
+    offset_x = (target_width - resized.size[0]) // 2
+    offset_y = (target_height - resized.size[1]) // 2
+    frame.paste(resized, (offset_x, offset_y))
+    draw = ImageDraw.Draw(frame)
+    draw.rounded_rectangle([0, 0, target_width - 1, target_height - 1], radius=20, outline=(222, 214, 203), width=2)
+    return frame
 
 
 def _get_font(size: int) -> ImageFont.FreeTypeFont:

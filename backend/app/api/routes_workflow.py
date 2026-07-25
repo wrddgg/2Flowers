@@ -40,9 +40,12 @@ def tutorial_status(task_id: str = Query(..., min_length=1)) -> WrappedResponse:
 def generate_card(request: GenerateCardRequest) -> WrappedResponse:
     try:
         data = generate_card_payload(
+            source=request.source or "",
             before=request.before,
             after=request.after,
             title=request.title,
+            source_context=request.source_context or "",
+            scene_reason=request.scene_reason or "",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"生成分享卡片失败: {exc}") from exc

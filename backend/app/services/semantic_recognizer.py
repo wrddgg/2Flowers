@@ -17,6 +17,7 @@ from app.schemas.provider_api import ProviderTagTaxonomy, SemanticRecognitionApi
 from app.schemas.semantic import SemanticResult
 from app.services.mode_detector import ModeDetector
 from app.services.semantic_parser import SemanticParser
+from app.utils.color_palette import build_color_swatches
 from app.utils.image_assets import to_provider_image_input
 from app.utils.text import new_id
 
@@ -312,13 +313,16 @@ class ApiSemanticRecognizer:
         fallback_text: str,
     ) -> SemanticResult:
         payload = values if isinstance(values, dict) else {}
+        color_palette = self._normalize_tags(payload.get("color_palette"), content_profile.get("color_palette", []))
+        visual_tags = self._normalize_tags(payload.get("visual_tags"), request.taxonomy.visual_tags)
         return SemanticResult(
             mode=detected_mode,  # type: ignore[arg-type]
             subject_tags=self._normalize_tags(payload.get("subject_tags"), content_profile.get("subject_tags", [])),
             scene_tags=self._normalize_tags(payload.get("scene_tags"), request.taxonomy.scene_tags),
             emotion_tags=self._normalize_tags(payload.get("emotion_tags"), request.taxonomy.emotion_tags),
-            visual_tags=self._normalize_tags(payload.get("visual_tags"), request.taxonomy.visual_tags),
-            color_palette=self._normalize_tags(payload.get("color_palette"), content_profile.get("color_palette", [])),
+            visual_tags=visual_tags,
+            color_palette=color_palette,
+            color_swatches=build_color_swatches(color_palette, visual_tags),
             relation_tags=self._normalize_tags(payload.get("relation_tags"), request.taxonomy.relation_tags),
             use_intent=_normalize_use_intent(payload.get("use_intent")),
             semantic_summary=str(payload.get("semantic_summary") or payload.get("raw_caption") or fallback_text).strip(),

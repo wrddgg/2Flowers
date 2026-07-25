@@ -17,7 +17,7 @@ class ImageEditProvider:
     def upload_root(self) -> Path:
         configured = Path(os.getenv("UPLOAD_DIR", "./uploads"))
         if not configured.is_absolute():
-            configured = Path(__file__).resolve().parents[2] / configured
+            configured = Path(__file__).resolve().parents[3] / configured
         return configured.resolve()
 
     def normalize_boxes(self, payload_boxes: object, max_boxes: int) -> list[list[int]]:

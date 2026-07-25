@@ -8,6 +8,11 @@ from app.schemas.mode import ModeType
 UseIntent = Literal["表达氛围", "gift", "self", "decorate", "celebrate"]
 
 
+class ColorSwatch(BaseModel):
+    label: str
+    hex: str
+
+
 class SemanticResult(BaseModel):
     mode: ModeType
     subject_tags: list[str] = Field(default_factory=list)
@@ -15,6 +20,7 @@ class SemanticResult(BaseModel):
     emotion_tags: list[str] = Field(default_factory=list)
     visual_tags: list[str] = Field(default_factory=list)
     color_palette: list[str] = Field(default_factory=list)
+    color_swatches: list[ColorSwatch] = Field(default_factory=list)
     relation_tags: list[str] = Field(default_factory=list)
     use_intent: UseIntent = "表达氛围"
     semantic_summary: str

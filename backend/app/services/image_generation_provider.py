@@ -9,7 +9,7 @@ from typing import Any, Protocol
 import httpx
 
 from app.config.runtime import is_test_mode
-from app.schemas.bouquet import BouquetResult, GenerateBouquetRequest, GenerationVariantPlan
+from app.schemas.bouquet import BouquetResult, FlowerInfo, GenerateBouquetRequest, GenerationVariantPlan
 from app.schemas.provider_api import (
     GeneratedBouquetImage,
     ImageGenerationApiRequest,
@@ -20,6 +20,103 @@ from app.schemas.provider_api import (
 from app.services.bouquet_generator import BouquetGenerator
 from app.utils.image_assets import to_provider_image_input
 from app.utils.text import new_id
+
+SCENE_CONSTRAINTS = {
+    "礼宾赠礼": "场景为礼宾赠礼或正式拜访。花束需要体现尊重、欢迎、克制和仪式感，整体为中小型，总枝数控制在11-16枝。采用挺拔、舒展且便于单手持握的结构，主花数量少而精，线性花拉开轮廓，枝叶之间保留明显呼吸空间。视觉上高级、得体，不抢夺人物注意力。禁止过度甜美、强烈恋爱暗示、儿童化装饰、巨大花团和过于私人化的花语。",
+    "庆祝纪念": "场景为生日、毕业、获奖或重要纪念。花束需要传递喜悦、活力和向上生长的情绪，整体为中等饱满度，总枝数控制在14-20枝。轮廓应有轻微上扬或向外绽放的动势，主花醒目，点缀花具有节奏感，适合合影和社交分享。配色可以明快，但必须来自输入画面的色彩关系。禁止过度庄重、沉闷低垂、廉价彩虹配色以及用大量花材制造虚假热闹。",
+    "恋人赠礼": "场景为恋人赠礼。花束需要表达明确、浓烈但不俗艳的爱意，整体为中等偏饱满结构，总枝数控制在18-24枝。主花形成集中而清晰的情感焦点，过渡花营造包裹感，点缀花增加细腻层次，线性花向外延伸情绪。通过色彩浓度、花瓣质感和聚焦关系表现爱意，不依靠盲目增加花量。禁止礼宾式疏离感、夸张心形、满屏红玫瑰以及婚礼手捧球式密集堆叠。",
+    "日常居家": "场景为自我陶冶情操、日常疗愈或家居摆放。花束需要自然、松弛、耐看，整体为小型至中小型，总枝数控制在8-14枝。减少包装感和强仪式感，保留自然枝条与花材原有姿态，适合插入普通花瓶并长期观看。色彩柔和但不能寡淡，结构轻盈、有呼吸感，重点表现平静和生活气息。禁止复杂包装、亮片装饰、过度饱满和强烈商业礼花感。",
+}
+
+STYLE_CONSTRAINTS = {
+    "东方留白": "采用东方留白风格。使用自然非对称构图，花束中保留约35%-50%的视觉留白，通过高位主枝、中位副枝和低位基底枝建立清晰的高低关系。主花数量少而有焦点，线性花负责延伸轮廓，枝叶之间必须留出呼吸空间。配色克制，以输入画面的主色为基础，只设置一个小面积强调色。禁止密集圆团、左右对称、封闭轮廓和把所有空隙全部填满。",
+    "法式浪漫": "采用法式浪漫花园风格。整体呈松弛的椭圆形或轻微S形轮廓，花材层层展开但不紧密压缩，保留约25%-35%的自然空隙。使用柔和曲线、渐变色彩和不同花瓣质感营造浪漫感，主花与小型点缀花之间形成自然过渡。花束应像刚从花园采集后经过专业整理，精致但不过度规整。禁止婚礼手捧球式圆团、蕾丝堆砌、过度粉嫩和刻意对称。",
+    "清新自然": "采用清新自然风格。模拟花材在自然环境中的生长状态，花枝长度错落、方向舒展，整体轻盈、透气并带有微风感。主花保持一个明确视觉焦点，点缀花分散形成节奏，线性花向上或向侧面自然伸展。配色清澈、明快，保留约30%-40%的呼吸空间。自然不等于杂乱，必须保持清晰轮廓和视觉重心。禁止随机插放、花头平均分布、塑料感和过度包装。",
+    "现代艺术": "采用现代艺术与雕塑感风格。使用简洁、鲜明的几何轮廓和具有方向性的线条，强调花材之间的形态对比、负空间和视觉张力。整体配色控制在2-3个主要色系，可以使用现实存在但形态独特的花材，形成具有展览感的单一视觉焦点。结构可以大胆，但必须符合真实插花的支撑逻辑并能够实际制作。禁止为了科技感加入虚假霓虹花、金属花瓣、无重力悬浮和不可实现的复杂结构。",
+}
+
+DEFAULT_SCENE_BY_MODE = {
+    "scene": "日常居家",
+    "flower": "庆祝纪念",
+    "life": "礼宾赠礼",
+}
+
+DEFAULT_STYLE_BY_FOCUS = {
+    "atmosphere": "东方留白",
+    "color": "法式浪漫",
+    "persona": "清新自然",
+    "material": "现代艺术",
+    "premium": "现代艺术",
+    "coherence": "东方留白",
+    "symbolism": "法式浪漫",
+}
+
+LAYOUT_POINTS = {
+    "mass": [[0.5, 0.26], [0.36, 0.38], [0.64, 0.38], [0.44, 0.54], [0.58, 0.56]],
+    "layered": [[0.52, 0.24], [0.35, 0.35], [0.68, 0.42], [0.4, 0.57], [0.62, 0.65]],
+    "airy": [[0.5, 0.2], [0.3, 0.34], [0.72, 0.4], [0.42, 0.58], [0.62, 0.7]],
+    "focal": [[0.52, 0.3], [0.38, 0.42], [0.64, 0.44], [0.46, 0.58], [0.58, 0.64]],
+}
+
+FLOWER_LIBRARY = {
+    "白洋桔梗": {"type": "主花", "meaning": "温柔、克制", "role": "负责留白和轻盈的主体层"},
+    "蓝绣球": {"type": "结构花", "meaning": "包裹感与体量", "role": "提供稳定色块与结构支撑"},
+    "尤加利": {"type": "叶材", "meaning": "清爽、松弛", "role": "拉开空间并让轮廓更自然"},
+    "白玫瑰": {"type": "主花", "meaning": "纯净、分寸感", "role": "作为视觉焦点压住甜度"},
+    "银叶菊": {"type": "配叶", "meaning": "冷静、柔化边界", "role": "柔和花束边界并增加冷感层次"},
+    "蓝星花": {"type": "点缀花", "meaning": "清透、安静", "role": "补充细小星点与空气感"},
+    "橙玫瑰": {"type": "主花", "meaning": "热烈、庆祝", "role": "构成暖色主焦点"},
+    "粉康乃馨": {"type": "辅助花", "meaning": "温柔、亲近", "role": "提供更柔和的情绪过渡"},
+    "落日飞燕": {"type": "线条花", "meaning": "上扬、梦幻", "role": "拉开外轮廓和向上节奏"},
+    "飞燕草": {"type": "线条花", "meaning": "自由、上扬", "role": "提供灵动的纵向线条"},
+    "白芍药": {"type": "主花", "meaning": "柔软、丰盈", "role": "增加花头层次和温柔体量"},
+    "奶油玫瑰": {"type": "主花", "meaning": "安心、温暖", "role": "形成柔和而高级的核心花面"},
+    "洋甘菊": {"type": "点缀花", "meaning": "日常、治愈", "role": "加入轻松的日常氛围"},
+    "香雪兰": {"type": "辅助花", "meaning": "轻柔、细腻", "role": "补足香气感和细碎层次"},
+    "绿铃草": {"type": "线条花", "meaning": "舒展、轻松", "role": "延展外轮廓并保持呼吸感"},
+    "白郁金香": {"type": "主花", "meaning": "安静、利落", "role": "建立清爽干净的主轮廓"},
+    "蕨叶": {"type": "叶材", "meaning": "自然、松弛", "role": "让整体更接近日常自然状态"},
+    "粉玫瑰": {"type": "主花", "meaning": "温柔、亲近", "role": "承担友好和柔软的主情绪"},
+    "珍珠梅": {"type": "点缀花", "meaning": "精致、轻巧", "role": "补充细小层次和礼物感"},
+    "香槟玫瑰": {"type": "主花", "meaning": "成熟、祝贺", "role": "承接正式而明亮的赠礼语气"},
+    "向日葵": {"type": "主花", "meaning": "积极、向上", "role": "形成强烈的庆祝视觉中心"},
+    "金鱼草": {"type": "线条花", "meaning": "挺拔、利落", "role": "增强结构的向上感"},
+    "白百合": {"type": "主花", "meaning": "庄重、安稳", "role": "增强正式感与仪式感"},
+    "康乃馨": {"type": "辅助花", "meaning": "照顾、温暖", "role": "让关系表达更有人情味"},
+    "风铃草": {"type": "辅助花", "meaning": "松弛、呼吸感", "role": "补足轻盈层次与松弛感"},
+    "麦穗": {"type": "线条花", "meaning": "自然、生长感", "role": "强化野生和生长方向"},
+    "火鹤": {"type": "焦点花", "meaning": "表达力、热烈", "role": "形成明确的视觉重击点"},
+    "重瓣康乃馨": {"type": "辅助花", "meaning": "丰盛、饱满", "role": "增加饱满度和情绪厚度"},
+    "郁金香": {"type": "主花", "meaning": "纪念感、利落", "role": "形成简洁有力的主轮廓"},
+    "蕾丝花": {"type": "点缀花", "meaning": "梦幻、柔和", "role": "让恋爱感更细腻而不俗气"},
+    "绿掌": {"type": "结构叶材", "meaning": "利落、清爽", "role": "收紧轮廓并提升现代感"},
+    "橙洋桔梗": {"type": "辅助花", "meaning": "轻庆祝、温暖", "role": "柔和过渡主色层次"},
+    "乒乓菊": {"type": "点缀花", "meaning": "轻快、礼物感", "role": "增加圆润和活泼感"},
+}
+
+FOCUS_FLOWER_HINTS = {
+    "atmosphere": ["白洋桔梗", "银叶菊", "蓝星花", "尤加利"],
+    "color": ["橙玫瑰", "粉康乃馨", "香槟玫瑰", "橙洋桔梗"],
+    "persona": ["白郁金香", "风铃草", "香雪兰", "粉玫瑰"],
+    "material": ["火鹤", "白芍药", "麦穗", "绿掌"],
+    "premium": ["香槟玫瑰", "白郁金香", "白百合", "奶油玫瑰"],
+    "coherence": ["白玫瑰", "白洋桔梗", "尤加利", "银叶菊"],
+    "symbolism": ["向日葵", "白百合", "郁金香", "康乃馨"],
+}
+
+SCENE_FLOWER_HINTS = {
+    "礼宾赠礼": ["白百合", "香槟玫瑰", "绿掌", "金鱼草"],
+    "庆祝纪念": ["向日葵", "香槟玫瑰", "橙玫瑰", "金鱼草"],
+    "恋人赠礼": ["奶油玫瑰", "郁金香", "蕾丝花", "粉玫瑰"],
+    "日常居家": ["白洋桔梗", "洋甘菊", "香雪兰", "尤加利"],
+}
+
+STYLE_FLOWER_HINTS = {
+    "东方留白": ["白洋桔梗", "白郁金香", "银叶菊", "绿铃草"],
+    "法式浪漫": ["奶油玫瑰", "白芍药", "香雪兰", "蕾丝花"],
+    "清新自然": ["风铃草", "飞燕草", "洋甘菊", "尤加利"],
+    "现代艺术": ["火鹤", "绿掌", "白百合", "蓝绣球"],
+}
 
 
 class ImageGenerationProvider(Protocol):
@@ -41,8 +138,10 @@ class MockImageGenerationProvider:
         bouquet_templates: list[dict[str, object]],
         reference_map: dict[str, dict[str, object]],
     ) -> tuple[list[BouquetResult], list[GenerationVariantPlan]]:
-        plan_used = request.variant_plans or self.generator_default_plan(request)
-        return self.generator.generate(request, bouquet_templates, reference_map), plan_used
+        raw_plans = request.variant_plans or self.generator_default_plan(request)
+        plan_used = [_decorate_variant_plan(plan, request) for plan in raw_plans]
+        results = self.generator.generate(request, bouquet_templates, reference_map)
+        return _enrich_bouquet_results(results, request, plan_used, reference_map), plan_used
 
     def generator_default_plan(self, request: GenerateBouquetRequest) -> list[GenerationVariantPlan]:
         return [
@@ -142,6 +241,8 @@ class ApiImageGenerationProvider:
             creative_mode=request.creative_mode,
             generation_goals=request.generation_goals,
             selected_interpretation_label=request.selected_interpretation_label,
+            selected_scene=request.selected_scene,
+            selected_style=request.selected_style,
             selected_references=selected_references,
             variant_plans=request.variant_plans,
             generation_constraints=ImageGenerationConstraints(
@@ -160,7 +261,7 @@ class ApiImageGenerationProvider:
         reference_map: dict[str, dict[str, object]],
     ) -> tuple[list[BouquetResult], list[GenerationVariantPlan]]:
         contract_request = self.build_api_request(request, bouquet_templates, reference_map)
-        plan_used = self._resolve_variant_plans(contract_request)
+        plan_used = [_decorate_variant_plan(plan, request) for plan in self._resolve_variant_plans(contract_request)]
         generated_images = self._generate_variant_images(contract_request, plan_used)
         if not generated_images:
             raise RuntimeError("生图 API 未返回可用图片。")
@@ -183,7 +284,7 @@ class ApiImageGenerationProvider:
                     }
                 )
             )
-        return merged_results, plan_used
+        return _enrich_bouquet_results(merged_results, request, plan_used, reference_map), plan_used
 
     def _generate_variant_images(
         self,
@@ -218,6 +319,12 @@ class ApiImageGenerationProvider:
         ]
         if request.selected_interpretation_label:
             lines.append(f"当前选择的解读：{request.selected_interpretation_label}")
+        if request.selected_scene:
+            lines.append(f"指定场景：{request.selected_scene}")
+            lines.append(f"场景硬约束：{SCENE_CONSTRAINTS.get(request.selected_scene, request.selected_scene)}")
+        if request.selected_style:
+            lines.append(f"指定风格：{request.selected_style}")
+            lines.append(f"风格硬约束：{STYLE_CONSTRAINTS.get(request.selected_style, request.selected_style)}")
         if request.generation_goals:
             lines.append(f"本轮生成目标：{'、'.join(request.generation_goals[:4])}")
         lines.append(f"创作模式：{request.creative_mode}")
@@ -351,6 +458,8 @@ class ApiImageGenerationProvider:
             f"变体标题：{variant.title}",
             f"变体焦点：{variant.focus}",
             f"变体要求：{variant.prompt_directive}",
+            f"指定场景：{variant.scene_preset or request.selected_scene or '未指定'}",
+            f"指定风格：{variant.style_preset or request.selected_style or '未指定'}",
             f"形式结构：{variant.composition_style}",
             f"材料丰富度：{variant.material_richness}",
             f"花材种类上限：{variant.species_count_cap}",
@@ -509,6 +618,12 @@ class ApiImageGenerationProvider:
                     dominant_flower_ratio=_normalize_dominant_flower_ratio(item.get("dominant_flower_ratio")),
                     color_strategy=_normalize_color_strategy(item.get("color_strategy")),
                     bouquet_density=_normalize_bouquet_density(item.get("bouquet_density")),
+                    scene_preset=_normalize_scene_preset(item.get("scene_preset"), request.mode),
+                    style_preset=_normalize_style_preset(item.get("style_preset"), focus),
+                    explanation=str(item.get("explanation") or "").strip(),
+                    fit_scenes=_normalize_string_list(item.get("fit_scenes")),
+                    usage_goal=str(item.get("usage_goal") or "").strip(),
+                    reality_advice=str(item.get("reality_advice") or "").strip(),
                 )
             )
         return normalized
@@ -528,16 +643,21 @@ class ApiImageGenerationProvider:
             "所有方案都必须坚持现实花材原则：允许稀有，但必须是真实存在的鲜花，不允许虚构花种或异常花芯结构。\n"
             "每个方案都要给出 variant_id、title、focus、prompt_directive、reference_strategy。\n"
             "每个方案还要给出 composition_style、material_richness、species_count_cap、dominant_flower_ratio、color_strategy、bouquet_density。\n"
+            "每个方案还要给出 scene_preset、style_preset、explanation、fit_scenes、usage_goal、reality_advice。\n"
             "focus 只能是 atmosphere / color / persona / material / premium / coherence / symbolism。\n"
             "reference_strategy 只能是 none / light / strong。\n"
             "composition_style 只能是 mass / layered / airy / focal。\n"
             "material_richness 只能是 single / limited / mixed。\n"
             "color_strategy 只能是 single_tone / dual_tone / accent。\n"
             "bouquet_density 只能是 dense / medium / airy。\n"
+            "scene_preset 只能是 礼宾赠礼 / 庆祝纪念 / 恋人赠礼 / 日常居家。\n"
+            "style_preset 只能是 东方留白 / 法式浪漫 / 清新自然 / 现代艺术。\n"
             "请控制方案数量为 3 个，并确保侧重点明显不同。\n"
             f"mode={request.mode}\n"
             f"creative_mode={request.creative_mode}\n"
             f"selected_interpretation_label={request.selected_interpretation_label or '未指定'}\n"
+            f"selected_scene={request.selected_scene or '未指定'}\n"
+            f"selected_style={request.selected_style or '未指定'}\n"
             f"semantic_summary={request.semantic_result.semantic_summary}\n"
             f"scene_tags={','.join(request.semantic_result.scene_tags)}\n"
             f"emotion_tags={','.join(request.semantic_result.emotion_tags)}\n"
@@ -545,7 +665,7 @@ class ApiImageGenerationProvider:
             f"translation_axes={','.join(request.semantic_result.translation_axes)}\n"
             f"generation_goals={goals}\n"
             f"references={references}\n"
-            '输出 JSON 结构：{"variant_plans":[{"variant_id":"plan_1","title":"氛围还原","focus":"atmosphere","prompt_directive":"...","reference_strategy":"light","composition_style":"mass","material_richness":"single","species_count_cap":2,"dominant_flower_ratio":0.82,"color_strategy":"single_tone","bouquet_density":"dense"}]}'
+            '输出 JSON 结构：{"variant_plans":[{"variant_id":"plan_1","title":"氛围还原","focus":"atmosphere","prompt_directive":"...","reference_strategy":"light","composition_style":"mass","material_richness":"single","species_count_cap":2,"dominant_flower_ratio":0.82,"color_strategy":"single_tone","bouquet_density":"dense","scene_preset":"庆祝纪念","style_preset":"东方留白","explanation":"...","fit_scenes":["生日现场","朋友庆祝"],"usage_goal":"适合表达祝贺与记忆留存","reality_advice":"适合做成单手可持的中小型花束"}]}'
         )
 
     def _build_default_variant_plan(self, request: ImageGenerationApiRequest) -> list[GenerationVariantPlan]:
@@ -562,6 +682,8 @@ class ApiImageGenerationProvider:
                 dominant_flower_ratio=0.82,
                 color_strategy="single_tone",
                 bouquet_density="dense",
+                scene_preset=_normalize_scene_preset(request.selected_scene, request.mode),
+                style_preset=_normalize_style_preset(request.selected_style, "atmosphere"),
             ),
             GenerationVariantPlan(
                 variant_id="plan_persona",
@@ -575,6 +697,8 @@ class ApiImageGenerationProvider:
                 dominant_flower_ratio=0.72,
                 color_strategy="dual_tone",
                 bouquet_density="medium",
+                scene_preset=_normalize_scene_preset(request.selected_scene, request.mode),
+                style_preset=_normalize_style_preset(request.selected_style, "persona"),
             ),
             GenerationVariantPlan(
                 variant_id="plan_symbolism",
@@ -588,6 +712,8 @@ class ApiImageGenerationProvider:
                 dominant_flower_ratio=0.65,
                 color_strategy="accent",
                 bouquet_density="medium",
+                scene_preset=_normalize_scene_preset(request.selected_scene, request.mode),
+                style_preset=_normalize_style_preset(request.selected_style, "symbolism"),
             ),
         ]
         return defaults[: request.generation_constraints.output_count]
@@ -785,3 +911,253 @@ def _normalize_dominant_flower_ratio(value: object) -> float:
     except (TypeError, ValueError):
         ratio = 0.7
     return max(0.4, min(1.0, ratio))
+
+
+def _normalize_scene_preset(value: object, mode: object) -> str:
+    candidate = str(value or "").strip()
+    if candidate in SCENE_CONSTRAINTS:
+        return candidate
+    return DEFAULT_SCENE_BY_MODE.get(str(mode), "庆祝纪念")
+
+
+def _normalize_style_preset(value: object, focus: object) -> str:
+    candidate = str(value or "").strip()
+    if candidate in STYLE_CONSTRAINTS:
+        return candidate
+    return DEFAULT_STYLE_BY_FOCUS.get(str(focus), "东方留白")
+
+
+def _normalize_string_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [part.strip() for part in value.split("、") if part.strip()]
+    return []
+
+
+def _decorate_variant_plan(plan: GenerationVariantPlan, request: GenerateBouquetRequest) -> GenerationVariantPlan:
+    scene_preset = plan.scene_preset or _normalize_scene_preset(request.selected_scene, request.mode)
+    style_preset = plan.style_preset or _normalize_style_preset(request.selected_style, plan.focus)
+    fit_scenes = plan.fit_scenes or _default_fit_scenes(scene_preset)
+    usage_goal = plan.usage_goal or _build_usage_goal(scene_preset, request)
+    explanation = plan.explanation or _build_plan_explanation(plan, request, scene_preset, style_preset)
+    reality_advice = plan.reality_advice or _build_reality_advice(plan, request, scene_preset, style_preset)
+    return plan.model_copy(
+        update={
+            "scene_preset": scene_preset,
+            "style_preset": style_preset,
+            "fit_scenes": fit_scenes,
+            "usage_goal": usage_goal,
+            "explanation": explanation,
+            "reality_advice": reality_advice,
+        }
+    )
+
+
+def _enrich_bouquet_results(
+    results: list[BouquetResult],
+    request: GenerateBouquetRequest,
+    plan_used: list[GenerationVariantPlan],
+    reference_map: dict[str, dict[str, object]],
+) -> list[BouquetResult]:
+    selected_references = [
+        reference_map[reference_id]
+        for reference_id in request.selected_reference_ids
+        if reference_id in reference_map
+    ]
+    enriched: list[BouquetResult] = []
+    for index, result in enumerate(results):
+        plan = plan_used[min(index, len(plan_used) - 1)] if plan_used else None
+        flowers = _build_variant_flowers(result, plan, selected_references, request)
+        enriched.append(
+            result.model_copy(
+                update={
+                    "flowers": flowers,
+                    "scene_preset": plan.scene_preset if plan else _normalize_scene_preset(request.selected_scene, request.mode),
+                    "style_preset": plan.style_preset if plan else _normalize_style_preset(request.selected_style, "atmosphere"),
+                    "explanation": plan.explanation if plan else "",
+                    "fit_scenes": list(plan.fit_scenes) if plan else [],
+                    "usage_goal": plan.usage_goal if plan else "",
+                    "reality_advice": plan.reality_advice if plan else "",
+                }
+            )
+        )
+    return enriched
+
+
+def _build_variant_flowers(
+    result: BouquetResult,
+    plan: GenerationVariantPlan | None,
+    selected_references: list[dict[str, object]],
+    request: GenerateBouquetRequest,
+) -> list[FlowerInfo]:
+    target_count = _resolve_target_flower_count(plan)
+    candidate_names = _collect_variant_flower_candidates(result, plan, selected_references, request)
+    points = LAYOUT_POINTS.get(plan.composition_style if plan else "mass", LAYOUT_POINTS["mass"])
+    enriched: list[FlowerInfo] = []
+    for index, flower_name in enumerate(candidate_names[:target_count]):
+        point = points[min(index, len(points) - 1)]
+        enriched.append(
+            _build_flower_info(
+                result_id=result.result_id,
+                flower_name=flower_name,
+                index=index,
+                plan=plan,
+                point=point,
+            )
+        )
+    return enriched
+
+
+def _resolve_target_flower_count(plan: GenerationVariantPlan | None) -> int:
+    if not plan:
+        return 3
+    richness_bonus = {
+        "single": 0,
+        "limited": 1,
+        "mixed": 2,
+    }.get(plan.material_richness, 1)
+    return max(2, min(plan.species_count_cap + richness_bonus, 5))
+
+
+def _collect_variant_flower_candidates(
+    result: BouquetResult,
+    plan: GenerationVariantPlan | None,
+    selected_references: list[dict[str, object]],
+    request: GenerateBouquetRequest,
+) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+
+    def push(names: list[str]) -> None:
+        for name in names:
+            cleaned = str(name).strip()
+            if not cleaned or cleaned in seen:
+                continue
+            ordered.append(cleaned)
+            seen.add(cleaned)
+
+    push([flower.name for flower in result.flowers])
+    for reference in selected_references[:2]:
+        push([str(item) for item in reference.get("flower_types", []) if str(item).strip()])
+    if plan:
+        push(FOCUS_FLOWER_HINTS.get(plan.focus, []))
+        push(SCENE_FLOWER_HINTS.get(plan.scene_preset or "", []))
+        push(STYLE_FLOWER_HINTS.get(plan.style_preset or "", []))
+    push(_flowers_from_semantic(request.semantic_result.color_palette, request.semantic_result.visual_tags))
+    push(_flowers_from_relation(request.semantic_result.relation_tags))
+    if len(ordered) < 2:
+        push(["白洋桔梗", "尤加利", "白玫瑰"])
+    return ordered
+
+
+def _flowers_from_semantic(color_palette: list[str], visual_tags: list[str]) -> list[str]:
+    text = " ".join(list(color_palette) + list(visual_tags))
+    if any(token in text for token in ["蓝", "冷", "雾", "留白"]):
+        return ["蓝绣球", "白洋桔梗", "银叶菊", "蓝星花"]
+    if any(token in text for token in ["粉", "柔", "暖白"]):
+        return ["粉玫瑰", "奶油玫瑰", "香雪兰", "蕾丝花"]
+    if any(token in text for token in ["黄", "橙", "红", "暖"]):
+        return ["向日葵", "香槟玫瑰", "橙玫瑰", "橙洋桔梗"]
+    if any(token in text for token in ["绿", "自然", "野生"]):
+        return ["绿铃草", "尤加利", "风铃草", "飞燕草"]
+    return []
+
+
+def _flowers_from_relation(relation_tags: list[str]) -> list[str]:
+    text = " ".join(relation_tags)
+    if any(token in text for token in ["领导", "同事"]):
+        return ["白百合", "香槟玫瑰", "绿掌"]
+    if "朋友" in text:
+        return ["向日葵", "粉玫瑰", "白洋桔梗"]
+    if any(token in text for token in ["恋人", "纪念日"]):
+        return ["奶油玫瑰", "郁金香", "蕾丝花"]
+    if any(token in text for token in ["家人", "妈妈"]):
+        return ["康乃馨", "白百合", "香雪兰"]
+    return []
+
+
+def _build_flower_info(
+    *,
+    result_id: str,
+    flower_name: str,
+    index: int,
+    plan: GenerationVariantPlan | None,
+    point: list[float],
+) -> FlowerInfo:
+    profile = FLOWER_LIBRARY.get(flower_name, {})
+    fallback_type = "主花" if index == 0 else "辅助花"
+    role = str(profile.get("role") or "补充当前方案的材料层次与花束结构")
+    if index == 0:
+        role = f"作为 {plan.title if plan else '当前方案'} 的主视觉焦点，{role}" if plan else role
+    elif index == 1:
+        role = f"作为 {plan.title if plan else '当前方案'} 的第二层结构，{role}" if plan else role
+    confidence = max(0.56, 0.93 - index * 0.07)
+    return FlowerInfo(
+        flower_id=f"{result_id}_{index + 1}",
+        name=flower_name,
+        type=str(profile.get("type") or fallback_type),
+        meaning=str(profile.get("meaning") or "用于支撑当前方案的气质表达"),
+        role=role,
+        point=point,
+        confidence=confidence,
+    )
+
+
+def _default_fit_scenes(scene_preset: str) -> list[str]:
+    return {
+        "礼宾赠礼": ["正式拜访", "商务欢迎", "阶段祝贺"],
+        "庆祝纪念": ["生日庆祝", "毕业获奖", "纪念合影"],
+        "恋人赠礼": ["纪念日", "约会赠礼", "亲密表达"],
+        "日常居家": ["家居摆放", "自我疗愈", "日常陪伴"],
+    }.get(scene_preset, [scene_preset])
+
+
+def _build_usage_goal(scene_preset: str, request: GenerateBouquetRequest) -> str:
+    if scene_preset == "礼宾赠礼":
+        return "适合表达尊重、欢迎与有分寸的正式心意。"
+    if scene_preset == "庆祝纪念":
+        return "适合承接庆祝、纪念和需要被看见的开心时刻。"
+    if scene_preset == "恋人赠礼":
+        return "适合表达明确爱意，同时保留审美上的节制和高级感。"
+    if request.mode == "scene":
+        return "适合把场景情绪转成可送、可摆、可记录的现实花艺结果。"
+    return "适合把当前输入转成现实中可承接、可复刻的花艺表达。"
+
+
+def _build_plan_explanation(
+    plan: GenerationVariantPlan,
+    request: GenerateBouquetRequest,
+    scene_preset: str,
+    style_preset: str,
+) -> str:
+    focus_copy = {
+        "atmosphere": "优先保留输入里的空气感、光线和整体色调",
+        "color": "优先强调输入中最有记忆点的色彩关系",
+        "persona": "优先承接人物或场景体现出的气质和分寸感",
+        "material": "优先通过真实花材的质地与结构建立识别度",
+        "premium": "优先提升整体完成度和高级感",
+        "coherence": "优先收束杂讯，让整体更统一",
+        "symbolism": "优先强化花语和关系语境的对应",
+    }.get(plan.focus, "优先完成当前输入的核心花艺转译")
+    return (
+        f"该方案以“{scene_preset}”为使用场景、以“{style_preset}”为形式方向，"
+        f"{focus_copy}，并围绕“{request.semantic_result.semantic_summary}”做减法表达。"
+    )
+
+
+def _build_reality_advice(
+    plan: GenerationVariantPlan,
+    request: GenerateBouquetRequest,
+    scene_preset: str,
+    style_preset: str,
+) -> str:
+    size_copy = {
+        "dense": "成品可做成更饱满的中型花束",
+        "medium": "成品建议保持中等体量，兼顾展示与持握",
+        "airy": "成品建议做成更轻盈的小中型结构",
+    }.get(plan.bouquet_density, "成品建议控制在现实中便于持握和摆放的体量")
+    return (
+        f"{size_copy}，优先保留 {scene_preset} 的场合分寸与 {style_preset} 的结构特征，"
+        f"花材种类控制在 {plan.species_count_cap} 类主要花材以内。"
+    )

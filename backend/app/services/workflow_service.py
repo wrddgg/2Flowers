@@ -102,30 +102,46 @@ def tutorial_status_payload(task_id: str) -> dict | None:
         }
 
 
-def generate_card_payload(*, before: str, after: str, title: str | None = None) -> dict:
+def generate_card_payload(
+    *,
+    source: str = "",
+    before: str,
+    after: str,
+    title: str | None = None,
+    source_context: str = "",
+    scene_reason: str = "",
+) -> dict:
     card_path = create_result_path("card", "compare", ".jpg")
-    compose_card(before, after, title or "", str(card_path))
-    share_bundle = build_share_text(title or "这束花")
+    compose_card(source, before, after, title or "", str(card_path))
+    share_bundle = build_share_text(title or "这束花", source_context=source_context, scene_reason=scene_reason)
     payload = {
         "card_image": public_upload_url(card_path),
         "share_text": share_bundle["result"]["share_text"],
+        "scene_reason": share_bundle["result"]["scene_reason"],
         "bgm_options": share_bundle["result"]["bgm_options"],
+        "compare_layout": "triple" if source else "double",
     }
     payload["report"] = save_share_card_report(
         {
             "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "request": {"title": title or "这束花"},
+            "request": {
+                "title": title or "这束花",
+                "source_context": source_context,
+                "scene_reason": scene_reason,
+                "has_source": bool(source),
+            },
             "planner": share_bundle["planner"],
             "generation": {
                 **share_bundle["generation"],
                 "card_image": payload["card_image"],
                 "result": {
                     "share_text": payload["share_text"],
+                    "scene_reason": payload["scene_reason"],
                     "bgm_options": payload["bgm_options"],
                 },
             },
         },
-        before,
+        source or before,
         after,
     )
     return payload
@@ -166,17 +182,25 @@ def build_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> dict:
     }
 
 
-def build_share_text(title: str) -> dict:
-    planner = _build_share_plan(title)
+def build_share_text(title: str, source_context: str = "", scene_reason: str = "") -> dict:
+    planner = _build_share_plan(title, source_context=source_context, scene_reason=scene_reason)
     if planner:
         try:
-            prompt = build_share_generation_prompt(title=title, plan=planner)
+            prompt = build_share_generation_prompt(
+                title=title,
+                plan=planner,
+                source_context=source_context,
+                scene_reason=scene_reason,
+            )
             result = _call_workflow_text_json(
                 prompt,
                 system_prompt=SHARE_EXPERT_SYSTEM_PROMPT,
             )
             options = result.get("bgm_options") or []
             share_text = result.get("share_text") or "把任何画面，变成一束花 #万物生花"
+            normalized_scene_reason = str(
+                result.get("scene_reason") or planner.get("plan", {}).get("why_it_fits_scene") or scene_reason
+            ).strip()
             if options:
                 return {
                     "planner": planner,
@@ -184,19 +208,24 @@ def build_share_text(title: str) -> dict:
                         "system_prompt": SHARE_EXPERT_SYSTEM_PROMPT,
                         "prompt": prompt,
                     },
-                    "result": {"share_text": share_text, "bgm_options": options[:3]},
+                    "result": {
+                        "share_text": share_text,
+                        "scene_reason": normalized_scene_reason or _fallback_scene_reason(title, source_context),
+                        "bgm_options": options[:3],
+                    },
                 }
         except Exception:
             pass
 
     return {
-        "planner": planner or _fallback_share_plan(title),
+        "planner": planner or _fallback_share_plan(title, source_context=source_context, scene_reason=scene_reason),
         "generation": {
             "system_prompt": SHARE_EXPERT_SYSTEM_PROMPT,
             "prompt": "(fallback share generation)",
         },
         "result": {
             "share_text": f"把「{title}」变成一束花 #万物生花",
+            "scene_reason": scene_reason or _fallback_scene_reason(title, source_context),
             "bgm_options": [
                 {"id": "bgm1", "name": "晚风告白", "artist": "花房乐队"},
                 {"id": "bgm2", "name": "日落大道", "artist": "慢速列车"},
@@ -303,9 +332,9 @@ def _build_tutorial_plan(flowers: list[str], bouquet_image: str = "") -> dict | 
     return None
 
 
-def _build_share_plan(title: str) -> dict | None:
+def _build_share_plan(title: str, source_context: str = "", scene_reason: str = "") -> dict | None:
     try:
-        prompt = build_share_planner_prompt(title=title)
+        prompt = build_share_planner_prompt(title=title, source_context=source_context, scene_reason=scene_reason)
         result = _call_workflow_planner_json(
             prompt,
             system_prompt=SHARE_PLANNER_SYSTEM_PROMPT,
@@ -337,7 +366,7 @@ def _fallback_tutorial_plan(flowers: list[str]) -> dict:
     }
 
 
-def _fallback_share_plan(title: str) -> dict:
+def _fallback_share_plan(title: str, source_context: str = "", scene_reason: str = "") -> dict:
     return {
         "system_prompt": SHARE_PLANNER_SYSTEM_PROMPT,
         "prompt": "(fallback share planner)",
@@ -345,9 +374,16 @@ def _fallback_share_plan(title: str) -> dict:
             "primary_angle": "情绪转译感",
             "tone": "温柔克制",
             "bgm_mood": "轻治愈",
+            "why_it_fits_scene": scene_reason or _fallback_scene_reason(title, source_context),
             "advice_for_copywriter": f"围绕「{title}」写简洁、有记忆点的发布文案。",
         },
     }
+
+
+def _fallback_scene_reason(title: str, source_context: str = "") -> str:
+    if source_context:
+        return f"它保留了素材里“{source_context}”的情绪线索，同时把画面气质收束成更适合花艺表达的形式。"
+    return f"它延续了“{title}”对应的情绪与视觉重心，所以适合承接原始素材场景。"
 
 
 def _normalize_tutorial_steps(steps: list[dict]) -> list[dict]:
