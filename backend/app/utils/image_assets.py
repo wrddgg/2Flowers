@@ -16,6 +16,10 @@ def resolve_local_image_path(image_url: str) -> Path | None:
     if not candidate:
         return None
 
+    # base64 dataURL 不是本地文件，直接透传（避免被当路径解析导致超长崩溃）
+    if candidate.startswith("data:"):
+        return None
+
     if candidate.startswith("/library/assets/"):
         asset_name = Path(candidate).name
         asset_path = LIBRARY_ASSET_DIR / asset_name

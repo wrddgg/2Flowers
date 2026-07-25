@@ -69,6 +69,18 @@
         </div>
       </section>
     </div>
+
+    <!-- 生成进度遮罩 -->
+    <div v-if="submitting" class="generating-cover">
+      <div class="generating-card">
+        <span class="gen-spinner"></span>
+        <p class="gen-title">正在生成修改图</p>
+        <div class="gen-track">
+          <div class="gen-fill" :style="{ width: genProgress + '%' }"></div>
+        </div>
+        <p class="gen-num">{{ genProgress }}%</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -85,6 +97,8 @@ const statusText = ref('先在花束图上涂抹或框选，再输入修改指�
 const errorText = ref('')
 const submitting = ref(false)
 const resultImageUrl = ref('')
+const genProgress = ref(0)
+let genTimer = null
 const imageEl = ref(null)
 const drawing = ref(false)
 const activeStroke = ref(null)
@@ -106,14 +120,32 @@ function setTool(nextTool) {
   tool.value = nextTool
 }
 
+/* 将跨域图片 fetch 为本地 objectURL，避免 canvas 被污染（tainted）导致无法 toDataURL */
+async function toLocalImageUrl(src) {
+  if (!src) return src
+  // dataURL / blob 本身就是同源，直接返回
+  if (src.startsWith('data:') || src.startsWith('blob:')) return src
+  try {
+    const resp = await fetch(src, { mode: 'cors' })
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const blob = await resp.blob()
+    return URL.createObjectURL(blob)
+  } catch {
+    // fetch 失败则退回原地址（依赖 crossOrigin + 服务器 CORS 头）
+    return src
+  }
+}
+
 async function loadImage() {
   if (!sourceImageUrl.value || !canvasRef.value) return
 
+  const localUrl = await toLocalImageUrl(sourceImageUrl.value)
   const image = await new Promise((resolve, reject) => {
     const el = new Image()
+    el.crossOrigin = 'anonymous'
     el.onload = () => resolve(el)
     el.onerror = () => reject(new Error('花束图加载失败。'))
-    el.src = sourceImageUrl.value
+    el.src = localUrl
   }).catch((error) => {
     errorText.value = error.message
     return null
@@ -338,6 +370,13 @@ async function submitEdit() {
   submitting.value = true
   errorText.value = ''
   statusText.value = '正在提交给模型，请稍等。'
+  genProgress.value = 0
+  clearInterval(genTimer)
+  genTimer = setInterval(() => {
+    // 进度到 92% 后放缓，等待真实结果
+    const step = genProgress.value < 70 ? Math.random() * 9 + 5 : Math.random() * 3 + 1
+    genProgress.value = Math.min(genProgress.value + step, 92)
+  }, 200)
 
   try {
     const result = await editImage({
@@ -345,12 +384,21 @@ async function submitEdit() {
       prompt: prompt.value,
       boxes: selections.value.map((selection) => selection.box)
     })
+    genProgress.value = 100
     resultImageUrl.value = result.imageUrl
     statusText.value = result.requestId ? `生成完成 · ${result.requestId}` : '生成完成。'
+    // 生成成功后应用并进入花束页
+    store.editedBouquetImage = result.imageUrl
+    setTimeout(() => {
+      submitting.value = false
+      goTo('bouquet')
+    }, 450)
   } catch (error) {
     errorText.value = error.message || '生成失败。'
-  } finally {
     submitting.value = false
+  } finally {
+    clearInterval(genTimer)
+    genTimer = null
   }
 }
 
@@ -538,5 +586,62 @@ function applyResult() {
   margin-top: 12px;
   border-radius: 16px;
   object-fit: cover;
+}
+
+/* 生成进度遮罩 */
+.generating-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: rgba(250, 246, 241, 0.96);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+}
+.generating-card {
+  width: 100%;
+  max-width: 300px;
+  text-align: center;
+}
+.gen-spinner {
+  display: inline-block;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3.5px solid rgba(61, 107, 87, 0.18);
+  border-top-color: var(--brand-deep);
+  animation: gen-spin 0.9s linear infinite;
+  margin-bottom: 20px;
+}
+@keyframes gen-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.gen-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #3a2f28;
+}
+.gen-track {
+  margin-top: 22px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f0e8de;
+  overflow: hidden;
+}
+.gen-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6a9a82, #3d6b57);
+  transition: width 0.2s ease;
+}
+.gen-num {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #9a8a7c;
+  font-family: ui-monospace, monospace;
 }
 </style>

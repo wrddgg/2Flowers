@@ -51,7 +51,20 @@
 
             <!-- 步骤示意图（mock 用插画块；接后端后用 image_url） -->
             <div class="step-illustration">
-              <img v-if="current.image_url && !isMockImg(current.image_url)" :src="current.image_url" alt="" />
+              <template v-if="current.image_url && !isMockImg(current.image_url)">
+                <!-- 图片加载完成前：骨架占位 + 加载指示 -->
+                <div v-show="!imgLoaded" class="step-illu-placeholder step-illu-loading" :style="{ background: illuBg(stepIndex) }">
+                  <span class="illu-spinner"></span>
+                  <p class="illu-prompt">示意图加载中…</p>
+                </div>
+                <img
+                  v-show="imgLoaded"
+                  :src="current.image_url"
+                  alt=""
+                  @load="imgLoaded = true"
+                  @error="imgLoaded = true"
+                />
+              </template>
               <div v-else class="step-illu-placeholder" :style="{ background: illuBg(stepIndex) }">
                 <span class="illu-num">{{ current.step }}</span>
                 <p class="illu-prompt">{{ current.image_prompt }}</p>
@@ -164,7 +177,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { store, goTo } from '../store'
 import { generateTutorial, generateShareCard, pollTutorialStatus } from '../api'
 import { composeCompareImage } from '../utils/compose'
@@ -173,6 +186,15 @@ const phase = ref('loading') // loading | steps | composing | share
 const steps = computed(() => store.tutorial?.steps || [])
 const stepIndex = ref(0)
 const current = computed(() => steps.value[stepIndex.value])
+const imgLoaded = ref(false)
+
+// 切换步骤或图片地址变化时，重置加载态
+watch(
+  () => [stepIndex.value, current.value?.image_url],
+  () => {
+    imgLoaded.value = false
+  }
+)
 
 const workInput = ref(null)
 const progress = ref(0)
@@ -532,6 +554,33 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   color: rgba(90, 74, 61, 0.75);
   text-align: center;
+}
+.step-illu-loading {
+  gap: 14px;
+}
+.illu-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  border-top-color: rgba(90, 74, 61, 0.65);
+  animation: illu-spin 0.9s linear infinite;
+}
+@keyframes illu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.step-illustration img {
+  animation: illu-fadein 0.35s ease;
+}
+@keyframes illu-fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .step-desc {
   margin-top: 16px;
