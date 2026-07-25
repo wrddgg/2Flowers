@@ -25,6 +25,9 @@ backend/.env.*
 !backend/.env.test.example
 !backend/.env.production.example
 
+# 敏感配置：wanwu-api 真实 env（含 API Key）不入库
+wanwu-api/.env
+
 front/node_modules/
 front/dist/
 front/dev.log
