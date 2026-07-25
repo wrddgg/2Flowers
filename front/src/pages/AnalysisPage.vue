@@ -16,8 +16,7 @@
     <div class="content" v-if="a">
       <!-- 上半：AI 解读 -->
       <section class="interpret">
-        <p class="kicker fade-up">AI 为这幅画面起名</p>
-        <h2 class="title fade-up" style="animation-delay:.06s">「{{ selectedOption?.label || a.title }}」</h2>
+        <h2 class="title fade-up">「{{ selectedOption?.label || a.title }}」</h2>
 
         <div class="info-card fade-up" style="animation-delay:.12s">
           <div class="row">

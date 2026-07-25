@@ -70,7 +70,7 @@ function toAnalysisView(raw) {
     ...raw,
     title: deriveTitle(raw),
     style: raw.semantic_result?.visual_tags?.join(' · ') || modeLabel(raw.mode_result?.detected_mode),
-    palette: raw.semantic_result?.color_palette || [],
+    palette: (raw.semantic_result?.color_swatches || []).map((s) => s.hex).filter(Boolean),
     mood: raw.semantic_result?.emotion_tags?.join('、') || '待识别',
     content: raw.semantic_result?.semantic_summary || '',
     scene: {
