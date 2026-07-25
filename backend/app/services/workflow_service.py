@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app.schemas.workflow import TutorialStep
 from app.services.share_card_composer import compose_card
 from app.services.workflow_clients import (
+    call_multimodal_json,
     create_result_path,
     has_wan_image_config,
     call_text_json,
@@ -20,9 +21,11 @@ from app.services.workflow_prompts import (
     SHARE_EXPERT_SYSTEM_PROMPT,
     SHARE_PLANNER_SYSTEM_PROMPT,
     TUTORIAL_EXPERT_SYSTEM_PROMPT,
+    TUTORIAL_IMAGE_REVIEW_SYSTEM_PROMPT,
     TUTORIAL_PLANNER_SYSTEM_PROMPT,
     build_share_generation_prompt,
     build_share_planner_prompt,
+    build_tutorial_image_review_prompt,
     build_tutorial_generation_prompt,
     build_tutorial_planner_prompt,
 )
@@ -57,7 +60,7 @@ def generate_tutorial_payload(*, flowers: list[str], bouquet_image: str = "", wi
             "task_id": "",
             "status": "done",
             "total": len(steps),
-            "done": len([step for step in steps if step["image_url"]]),
+            "done": len([step for step in steps if step.get("image_status") in {"done", "skipped"}]),
             "steps": steps,
             "report": report_paths,
         }
@@ -77,7 +80,7 @@ def generate_tutorial_payload(*, flowers: list[str], bouquet_image: str = "", wi
         }
 
     flowers_text = "、".join(flowers)
-    threading.Thread(target=_tutorial_worker, args=(task_id, flowers_text), daemon=True).start()
+    threading.Thread(target=_tutorial_worker, args=(task_id, flowers_text, bouquet_image), daemon=True).start()
     return {
         "task_id": task_id,
         "status": "processing",
@@ -114,12 +117,16 @@ def generate_card_payload(
     card_path = create_result_path("card", "compare", ".jpg")
     compose_card(source, before, after, title or "", str(card_path))
     share_bundle = build_share_text(title or "这束花", source_context=source_context, scene_reason=scene_reason)
+    compare_panels = _build_compare_panels(has_source=bool(source))
     payload = {
         "card_image": public_upload_url(card_path),
         "share_text": share_bundle["result"]["share_text"],
         "scene_reason": share_bundle["result"]["scene_reason"],
         "bgm_options": share_bundle["result"]["bgm_options"],
         "compare_layout": "triple" if source else "double",
+        "compare_panels": compare_panels,
+        "panel_order": [panel["key"] for panel in compare_panels],
+        "panel_labels": {panel["key"]: panel["label"] for panel in compare_panels},
     }
     payload["report"] = save_share_card_report(
         {
@@ -145,6 +152,36 @@ def generate_card_payload(
         after,
     )
     return payload
+
+
+def _build_compare_panels(*, has_source: bool) -> list[dict[str, object]]:
+    panels: list[dict[str, object]] = []
+    if has_source:
+        panels.append(
+            {
+                "key": "source",
+                "label": "输入素材",
+                "order": 1,
+                "image_role": "scene_input",
+            }
+        )
+    panels.append(
+        {
+            "key": "before",
+            "label": "AI 生花",
+            "order": 2 if has_source else 1,
+            "image_role": "ai_bouquet",
+        }
+    )
+    panels.append(
+        {
+            "key": "after",
+            "label": "自制复刻",
+            "order": 3 if has_source else 2,
+            "image_role": "user_recreation",
+        }
+    )
+    return panels
 
 
 def build_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> dict:
@@ -235,7 +272,7 @@ def build_share_text(title: str, source_context: str = "", scene_reason: str = "
     }
 
 
-def _tutorial_worker(task_id: str, flowers_text: str) -> None:
+def _tutorial_worker(task_id: str, flowers_text: str, bouquet_image: str) -> None:
     with TASK_LOCK:
         task = TUTORIAL_TASKS.get(task_id)
         if not task:
@@ -244,12 +281,18 @@ def _tutorial_worker(task_id: str, flowers_text: str) -> None:
 
     try:
         with ThreadPoolExecutor(max_workers=min(4, len(steps) or 1)) as pool:
+            futures = []
             for index, step in enumerate(steps):
-                pool.submit(_generate_step_image, task_id, index, step, flowers_text)
+                futures.append(pool.submit(_generate_step_image, task_id, index, step, flowers_text, bouquet_image))
+            for future in futures:
+                future.result()
         with TASK_LOCK:
             task = TUTORIAL_TASKS.get(task_id)
             if task:
-                task["status"] = "done"
+                failed = sum(1 for item in task["steps"] if item.get("image_status") == "failed")
+                done = sum(1 for item in task["steps"] if item.get("image_status") == "done")
+                task["done"] = done
+                task["status"] = "done" if failed == 0 and done == task["total"] else "partial"
                 task["finished_at"] = time.time()
     except Exception as exc:
         with TASK_LOCK:
@@ -260,26 +303,54 @@ def _tutorial_worker(task_id: str, flowers_text: str) -> None:
                 task["finished_at"] = time.time()
 
 
-def _generate_step_image(task_id: str, index: int, step: dict, flowers_text: str) -> None:
+def _generate_step_image(task_id: str, index: int, step: dict, flowers_text: str, bouquet_image: str) -> None:
     image_url = ""
+    image_status = "failed"
+    image_review = ""
+    image_review_score = 0.0
+    image_review_issues: list[str] = []
+    image_retry_count = 0
     try:
-        prompt = (
-            f"插花教学步骤图：{step.get('image_prompt') or step.get('description', '')}。"
-            f" 花材包含 {flowers_text}。画面干净、主体突出、光线均匀，"
-            "半写实教学插画风格，适合新手跟做。"
-        )
-        local_path = create_result_path("tutorial", f"{task_id}_step{step.get('step', index + 1)}", ".png")
-        text2image(prompt, str(local_path), size="1K")
-        image_url = public_upload_url(local_path)
-    except Exception:
+        max_attempts = 3
+        local_path = None
+        for attempt in range(max_attempts):
+            retry_hint = image_review_issues[0] if image_review_issues else image_review
+            generation_prompt = _build_tutorial_step_image_prompt(step, flowers_text, retry_hint)
+            attempt_suffix = "" if attempt == 0 else f"_retry{attempt}"
+            local_path = create_result_path("tutorial", f"{task_id}_step{step.get('step', index + 1)}{attempt_suffix}", ".png")
+            text2image(generation_prompt, str(local_path), size="1K")
+            review = _review_tutorial_step_image(
+                step=step,
+                flowers_text=flowers_text,
+                bouquet_image=bouquet_image,
+                generated_image=str(local_path),
+            )
+            image_review = review["review_text"]
+            image_review_score = review["score"]
+            image_review_issues = review["issues"]
+            image_retry_count = attempt
+            if review["passed"]:
+                image_url = public_upload_url(local_path)
+                image_status = "done"
+                break
+        if image_status != "done":
+            image_review = image_review or "教程配图未通过审核"
+    except Exception as exc:
         image_url = ""
+        image_status = "failed"
+        image_review = str(exc)
 
     with TASK_LOCK:
         task = TUTORIAL_TASKS.get(task_id)
         if not task:
             return
         task["steps"][index]["image_url"] = image_url
-        task["done"] = sum(1 for item in task["steps"] if item.get("image_url"))
+        task["steps"][index]["image_status"] = image_status
+        task["steps"][index]["image_review"] = image_review
+        task["steps"][index]["image_review_score"] = image_review_score
+        task["steps"][index]["image_review_issues"] = image_review_issues
+        task["steps"][index]["image_retry_count"] = image_retry_count
+        task["done"] = sum(1 for item in task["steps"] if item.get("image_status") == "done")
 
 
 def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> list[dict]:
@@ -290,26 +361,31 @@ def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> lis
             step=1,
             title="醒花与修剪",
             description="先修剪花茎、去掉多余叶片，让每一支花材充分喝水，再开始构图。",
-            image_prompt="特写：修剪花茎与整理叶片",
+            image_prompt="近景教学图，完整展示修剪花茎与整理叶片的双手动作，花头和容器不要被截断",
             image_url=image_url,
+            image_status="done" if image_url else "skipped",
+            image_review="已复用已有花束图",
         ).model_dump(),
         TutorialStep(
             step=2,
             title="先定主花",
             description=f"先用 {main_flowers} 搭出骨架，确定视觉重心和外轮廓。",
-            image_prompt="俯拍：先放主花形成视觉中心",
+            image_prompt="俯拍教学图，完整展示先放主花形成视觉中心的动作，画面保留花束骨架的整体轮廓",
+            image_status="skipped",
         ).model_dump(),
         TutorialStep(
             step=3,
             title="补足层次",
             description="按照高低、疏密、前后关系补入配花和叶材，让整体更有节奏。",
-            image_prompt="侧面：辅花逐层填入形成层次",
+            image_prompt="侧面教学图，完整展示辅花逐层填入形成层次的过程，不要裁掉主要花头与手部动作",
+            image_status="skipped",
         ).model_dump(),
         TutorialStep(
             step=4,
             title="整理收口",
             description="最后调整朝向、修整外轮廓，并完成包装与绑带。",
-            image_prompt="成品：整理包装与绑带",
+            image_prompt="成品教学图，完整展示整理包装与绑带的收口动作，花束外轮廓完整自然",
+            image_status="skipped",
         ).model_dump(),
     ]
 
@@ -396,6 +472,11 @@ def _normalize_tutorial_steps(steps: list[dict]) -> list[dict]:
                 description=str(step.get("description") or "根据花材状态逐步整理花束结构。"),
                 image_prompt=str(step.get("image_prompt") or step.get("description") or ""),
                 image_url="",
+                image_status=str(step.get("image_status") or "pending"),
+                image_review=str(step.get("image_review") or ""),
+                image_review_score=float(step.get("image_review_score") or 0.0),
+                image_review_issues=[str(item) for item in (step.get("image_review_issues") or []) if str(item).strip()],
+                image_retry_count=int(step.get("image_retry_count") or 0),
             ).model_dump()
         )
     return normalized
@@ -425,3 +506,100 @@ def _call_workflow_text_json(prompt: str, *, system_prompt: str) -> dict:
         base_url=base_url,
         api_key=api_key,
     )
+
+
+def _call_workflow_multimodal_json(prompt: str, *, system_prompt: str, image_urls: list[str]) -> dict:
+    base_url, api_key, model = resolve_workflow_text_config()
+    if not base_url or not api_key:
+        raise RuntimeError("workflow multimodal unavailable")
+    return call_multimodal_json(
+        prompt,
+        image_urls=image_urls,
+        model=model,
+        system_prompt=system_prompt,
+        base_url=base_url,
+        api_key=api_key,
+    )
+
+
+def _build_tutorial_step_image_prompt(step: dict, flowers_text: str, retry_hint: str = "") -> str:
+    base_prompt = (
+        f"插花教学步骤图，步骤标题：{step.get('title', '')}。"
+        f" 当前动作：{step.get('image_prompt') or step.get('description', '')}。"
+        f" 花材包含 {flowers_text}。"
+        " 画面为真实可执行的花艺教学场景，半写实教程插画或摄影参考风格。"
+        " 必须完整展示关键手部动作、主要花头、容器和花束轮廓，禁止截断主体。"
+        " 花材必须真实存在，结构自然，不允许错误肢体、漂浮工具、异常花型和夸张 AI 痕迹。"
+    )
+    if retry_hint:
+        return f"{base_prompt} 额外修正要求：{retry_hint}"
+    return base_prompt
+
+
+def _review_tutorial_step_image(
+    *,
+    step: dict,
+    flowers_text: str,
+    bouquet_image: str,
+    generated_image: str,
+) -> dict[str, object]:
+    image_urls = [generated_image]
+    if bouquet_image:
+        image_urls.insert(0, bouquet_image)
+    try:
+        result = _call_workflow_multimodal_json(
+            build_tutorial_image_review_prompt(
+                step_title=str(step.get("title") or ""),
+                step_description=str(step.get("description") or ""),
+                step_image_prompt=str(step.get("image_prompt") or ""),
+                flowers_text=flowers_text,
+                has_bouquet_reference=bool(bouquet_image),
+            ),
+            system_prompt=TUTORIAL_IMAGE_REVIEW_SYSTEM_PROMPT,
+            image_urls=image_urls,
+        )
+        return _normalize_tutorial_review_result(result)
+    except Exception as exc:
+        return {
+            "passed": True,
+            "score": 1.0,
+            "issues": [],
+            "retry_prompt_hint": "",
+            "review_text": f"审核跳过：{exc}",
+        }
+
+
+def _normalize_tutorial_review_result(result: dict[str, object]) -> dict[str, object]:
+    score = _coerce_review_score(result.get("score"))
+    issues = [str(item).strip() for item in (result.get("issues") or []) if str(item).strip()]
+    blocking_issues = [str(item).strip() for item in (result.get("blocking_issues") or []) if str(item).strip()]
+    retry_hint = str(result.get("retry_prompt_hint") or "").strip()
+    summary = str(result.get("review_summary") or "").strip()
+    passed = bool(result.get("pass"))
+
+    if blocking_issues:
+        passed = False
+    if score < 0.75:
+        passed = False
+    if any(result.get(key) is False for key in ["action_ok", "composition_ok", "botany_ok", "reference_consistency_ok"]):
+        passed = False
+
+    combined_issues = issues + [item for item in blocking_issues if item not in issues]
+    if not retry_hint and combined_issues:
+        retry_hint = "；".join(combined_issues[:3])
+    review_text = summary or "；".join(combined_issues[:2]) or ("审核通过" if passed else "教程配图未通过审核")
+    return {
+        "passed": passed,
+        "score": score,
+        "issues": combined_issues[:5],
+        "retry_prompt_hint": retry_hint,
+        "review_text": review_text,
+    }
+
+
+def _coerce_review_score(value: object) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return max(0.0, min(1.0, score))

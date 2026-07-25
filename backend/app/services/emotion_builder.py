@@ -1,8 +1,107 @@
 from __future__ import annotations
 
 from app.schemas.bouquet import BouquetResult
-from app.schemas.emotion import EmotionBuildResponse, GiftCard, OwnCard, OwnOption, SaveCard
+from app.schemas.emotion import (
+    BudgetLevel,
+    EmotionBuildResponse,
+    EmotionRemakePreviewRequest,
+    EmotionRemakePreviewResponse,
+    GiftCard,
+    OwnCard,
+    OwnOption,
+    RemakePlan,
+    RemakeSubstitute,
+    SaveCard,
+)
+from app.services.workflow_clients import create_result_path, public_upload_url, text2image
 from app.utils.scoring import overlap_score
+
+
+BUDGET_LABELS = {
+    "premium": "完整复刻",
+    "balanced": "平衡复刻",
+    "budget": "轻预算复刻",
+}
+
+BUDGET_FLOWER_LIMIT = {
+    "premium": 4,
+    "balanced": 3,
+    "budget": 2,
+}
+
+SEASON_LABELS = {
+    12: "冬季",
+    1: "冬季",
+    2: "冬季",
+    3: "春季",
+    4: "春季",
+    5: "春季",
+    6: "夏季",
+    7: "夏季",
+    8: "夏季",
+    9: "秋季",
+    10: "秋季",
+    11: "秋季",
+}
+
+FLOWER_SUBSTITUTIONS = [
+    {
+        "keywords": ["芍药", "牡丹"],
+        "months": {4, 5, 6},
+        "off_season_replacement": "花园玫瑰",
+        "off_season_reason": "芍药和牡丹花期短，非当季时用层次接近的花园玫瑰更容易采购。",
+        "budget_replacement": "康乃馨",
+        "budget_reason": "预算收束时可用花型饱满、采购稳定的康乃馨保留团簇感。",
+    },
+    {
+        "keywords": ["郁金香"],
+        "months": {12, 1, 2, 3, 4},
+        "off_season_replacement": "洋桔梗",
+        "off_season_reason": "郁金香非长季供应时，洋桔梗更稳定，也能保留轻盈杯状花感。",
+        "budget_replacement": "单头玫瑰",
+        "budget_reason": "预算更紧时用单头玫瑰保留明确花型，成本更可控。",
+    },
+    {
+        "keywords": ["铃兰"],
+        "months": {4, 5, 6},
+        "off_season_replacement": "小苍兰",
+        "off_season_reason": "铃兰零售获取难度高，用小苍兰更符合日常花店采购现实。",
+        "budget_replacement": "小雏菊",
+        "budget_reason": "预算版可用小雏菊保留轻巧白花点缀。",
+    },
+    {
+        "keywords": ["洋牡丹", "花毛茛"],
+        "months": {2, 3, 4, 5},
+        "off_season_replacement": "玫瑰",
+        "off_season_reason": "洋牡丹短季明显，非当季时改用玫瑰更容易稳定出货。",
+        "budget_replacement": "喷头玫瑰",
+        "budget_reason": "预算版用喷头玫瑰替代，仍能保留层层展开的感觉。",
+    },
+    {
+        "keywords": ["绣球"],
+        "months": {5, 6, 7, 8, 9},
+        "off_season_replacement": "康乃馨",
+        "off_season_reason": "非绣球旺季时可用成组康乃馨做团面，落地性更高。",
+        "budget_replacement": "康乃馨",
+        "budget_reason": "预算友好时康乃馨能较好承接绣球的大面积块面感。",
+    },
+    {
+        "keywords": ["蝴蝶兰", "兰花"],
+        "months": set(range(1, 13)),
+        "off_season_replacement": "白玫瑰",
+        "off_season_reason": "花束型蝴蝶兰成本和取材波动较大，用白玫瑰更适合常规定制。",
+        "budget_replacement": "白玫瑰",
+        "budget_reason": "预算版优先保留干净高级感，改用白玫瑰更稳妥。",
+    },
+    {
+        "keywords": ["雪柳", "飞燕草", "大飞燕"],
+        "months": {3, 4, 5, 6},
+        "off_season_replacement": "尤加利",
+        "off_season_reason": "线性材料不稳定时，用尤加利和金鱼草组合更容易实现结构线条。",
+        "budget_replacement": "尤加利",
+        "budget_reason": "预算版优先保留线条，不强求昂贵枝材。",
+    },
+]
 
 
 class EmotionBuilder:
@@ -27,6 +126,36 @@ class EmotionBuilder:
                 options=["同感觉现货版", "预算友好版", "轻量桌花版"],
                 candidates=own_candidates,
             ),
+        )
+
+    def build_remake_preview(
+        self,
+        *,
+        result: BouquetResult,
+        request: EmotionRemakePreviewRequest,
+        reference_candidates: list[dict[str, object]],
+    ) -> EmotionRemakePreviewResponse:
+        own_candidates = self._build_own_candidates(result, request.voice_context, reference_candidates)
+        option = next((item for item in own_candidates if item.option_type == request.option_type), None)
+        if option is None:
+            raise ValueError(f"未知的复刻方案 option_type={request.option_type}")
+
+        budget_level = self._resolve_budget_level(request.budget_level, request.option_type, result)
+        plan = self._build_remake_plan(
+            result=result,
+            option=option,
+            budget_level=budget_level,
+            season_month=request.season_month,
+        )
+        preview_image_url, preview_status = self._generate_remake_preview(result, plan)
+        return EmotionRemakePreviewResponse(
+            option_type=option.option_type,
+            option_title=option.title,
+            preview_image_url=preview_image_url,
+            preview_status=preview_status,
+            budget_level=budget_level,
+            generation_brief=option.generation_brief,
+            plan=plan,
         )
 
     def _extract_target(self, voice_context: str) -> str:
@@ -170,3 +299,233 @@ class EmotionBuilder:
         if tags:
             brief_parts.append(f"重点保留 { '、'.join(tags) }")
         return "，".join(brief_parts) + "。"
+
+    def _resolve_budget_level(
+        self,
+        requested_budget: BudgetLevel,
+        option_type: str,
+        result: BouquetResult,
+    ) -> str:
+        if requested_budget != "auto":
+            return requested_budget
+
+        flower_count = len({flower.name for flower in result.flowers if flower.name})
+        if option_type == "budget_friendly":
+            return "budget"
+        if option_type == "light_table":
+            return "budget" if flower_count <= 2 else "balanced"
+        if flower_count >= 4:
+            return "premium"
+        return "balanced"
+
+    def _build_remake_plan(
+        self,
+        *,
+        result: BouquetResult,
+        option: OwnOption,
+        budget_level: str,
+        season_month: int | None,
+    ) -> RemakePlan:
+        source_flowers = self._ordered_unique([flower.name for flower in result.flowers if flower.name])
+        selected_flowers, substitutes = self._resolve_selected_flowers(
+            source_flowers=source_flowers,
+            budget_level=budget_level,
+            season_month=season_month,
+        )
+        preserve_points = self._build_preserve_points(result, option, budget_level)
+        seasonality_note = self._build_seasonality_note(season_month, substitutes)
+        materials_note = self._build_materials_note(option.option_type, budget_level, selected_flowers, substitutes)
+        preview_prompt = self._build_preview_prompt(
+            result=result,
+            option=option,
+            budget_level=budget_level,
+            season_month=season_month,
+            selected_flowers=selected_flowers,
+            substitutes=substitutes,
+            preserve_points=preserve_points,
+            materials_note=materials_note,
+        )
+        return RemakePlan(
+            title=f"{option.title}·{BUDGET_LABELS[budget_level]}",
+            budget_level=budget_level,
+            seasonality_note=seasonality_note,
+            preserve_points=preserve_points,
+            selected_flowers=selected_flowers,
+            substitute_flowers=substitutes,
+            materials_note=materials_note,
+            preview_prompt=preview_prompt,
+        )
+
+    def _resolve_selected_flowers(
+        self,
+        *,
+        source_flowers: list[str],
+        budget_level: str,
+        season_month: int | None,
+    ) -> tuple[list[str], list[RemakeSubstitute]]:
+        if not source_flowers:
+            source_flowers = ["玫瑰", "洋桔梗", "尤加利"]
+
+        limit = BUDGET_FLOWER_LIMIT[budget_level]
+        selected: list[str] = []
+        substitutes: list[RemakeSubstitute] = []
+        seen_replacements: set[str] = set()
+
+        for flower_name in source_flowers:
+            replacement, reason = self._resolve_flower_replacement(flower_name, budget_level, season_month)
+            if replacement != flower_name:
+                key = f"{flower_name}->{replacement}"
+                if key not in seen_replacements:
+                    substitutes.append(
+                        RemakeSubstitute(
+                            source_flower=flower_name,
+                            replacement_flower=replacement,
+                            reason=reason,
+                        )
+                    )
+                    seen_replacements.add(key)
+            chosen = replacement or flower_name
+            if chosen not in selected:
+                selected.append(chosen)
+            if len(selected) >= limit:
+                break
+
+        while len(selected) < min(limit, 3):
+            for fallback_flower in ["玫瑰", "洋桔梗", "康乃馨", "尤加利"]:
+                if fallback_flower not in selected:
+                    selected.append(fallback_flower)
+                if len(selected) >= min(limit, 3):
+                    break
+
+        return selected[:limit], substitutes
+
+    def _resolve_flower_replacement(
+        self,
+        flower_name: str,
+        budget_level: str,
+        season_month: int | None,
+    ) -> tuple[str, str]:
+        normalized = flower_name.strip()
+        for rule in FLOWER_SUBSTITUTIONS:
+            if not any(keyword in normalized for keyword in rule["keywords"]):
+                continue
+            if season_month is not None and season_month not in rule["months"]:
+                return str(rule["off_season_replacement"]), str(rule["off_season_reason"])
+            if budget_level == "budget":
+                return str(rule["budget_replacement"]), str(rule["budget_reason"])
+            if budget_level == "balanced" and "蝴蝶兰" in normalized:
+                return str(rule["budget_replacement"]), "平衡预算下优先选择采购更稳定、束形更容易控制的替代花材。"
+            return normalized, ""
+        if budget_level == "budget" and any(keyword in normalized for keyword in ["玫瑰", "蔷薇"]):
+            return "喷头玫瑰", "预算版适合用喷头玫瑰保留花量感，同时控制单支成本。"
+        return normalized, ""
+
+    def _build_preserve_points(self, result: BouquetResult, option: OwnOption, budget_level: str) -> list[str]:
+        points = [f"保留“{result.title}”的主色调和整体情绪，不做偏离原图的花材换风格。"] 
+        if option.option_type == "same_feeling":
+            points.append("尽量复刻原花束的轮廓、主花占比和送礼气质，做成更像花店现货的版本。")
+        elif option.option_type == "budget_friendly":
+            points.append("减少花材种类与总支数，但保留最有记忆点的主花和色块关系。")
+        else:
+            points.append("将花束压缩成更适合桌面或轻量摆放的体量，保持正面观感和留白。")
+        if result.style_preset:
+            points.append(f"构图继续参考“{result.style_preset}”的审美表达，保持画面高级感。")
+        elif result.scene_preset:
+            points.append(f"整体情境继续贴合“{result.scene_preset}”的使用场景。")
+        if budget_level == "budget":
+            points.append("优先保留一到两种主花，其他部分用常见配花和叶材完成结构。")
+        return points[:3]
+
+    def _build_seasonality_note(self, season_month: int | None, substitutes: list[RemakeSubstitute]) -> str:
+        if season_month is None:
+            if substitutes:
+                return "未指定月份，已按常规花店常备花材优先处理，并对难稳定采购的花材做了替代。"
+            return "未指定月份，默认按普通城市花店全年常备花材去做现实复刻。"
+        season_name = SEASON_LABELS.get(season_month, "当季")
+        if substitutes:
+            return f"按 {season_month} 月（{season_name}）估算，部分短花期或采购波动较大的花材已替换为更常见的同感觉材料。"
+        return f"按 {season_month} 月（{season_name}）估算，当前主要花材基本可在日常花店采购。"
+
+    def _build_materials_note(
+        self,
+        option_type: str,
+        budget_level: str,
+        selected_flowers: list[str],
+        substitutes: list[RemakeSubstitute],
+    ) -> str:
+        base = f"主用 { '、'.join(selected_flowers) } 做现实版本。"
+        if option_type == "light_table":
+            base += " 结构上更适合做低矮桌花或短束，便于实体摆放。"
+        elif option_type == "budget_friendly":
+            base += " 通过减少花材层级和支数来控制预算，但不牺牲核心氛围。"
+        else:
+            base += " 保留更完整的主花层次，优先做成花店可交付的成品花束。"
+        if budget_level == "budget":
+            base += " 包装和叶材建议简化，避免把预算消耗在复杂辅材上。"
+        if substitutes:
+            preview = "；".join(
+                f"{item.source_flower}->{item.replacement_flower}" for item in substitutes[:3]
+            )
+            base += f" 已处理的关键替代包括：{preview}。"
+        return base
+
+    def _build_preview_prompt(
+        self,
+        *,
+        result: BouquetResult,
+        option: OwnOption,
+        budget_level: str,
+        season_month: int | None,
+        selected_flowers: list[str],
+        substitutes: list[RemakeSubstitute],
+        preserve_points: list[str],
+        materials_note: str,
+    ) -> str:
+        lines = [
+            "请生成一张用于给花店沟通定制的现实花束预览图。",
+            "必须是可落地、可采购、符合日常花店制作逻辑的真实花束照片，不要插画感，不要幻想植物。",
+            f"目标来源：{result.title}。原始摘要：{result.summary}",
+            f"复刻方向：{option.title}。预算档位：{BUDGET_LABELS[budget_level]}。",
+            f"现实花材只使用常见且容易购买的材料：{'、'.join(selected_flowers)}。",
+            f"复刻重点：{'；'.join(preserve_points)}",
+            f"材料说明：{materials_note}",
+        ]
+        if substitutes:
+            substitute_text = "；".join(
+                f"{item.source_flower} 改为 {item.replacement_flower}，原因：{item.reason}"
+                for item in substitutes[:4]
+            )
+            lines.append(f"替代策略：{substitute_text}")
+        if season_month is not None:
+            lines.append(f"请按照 {season_month} 月的实际花市供应去控制花材选择和丰度。")
+        if result.scene_preset:
+            lines.append(f"使用情境仍然贴合：{result.scene_preset}。")
+        if result.style_preset:
+            lines.append(f"审美风格继续保持：{result.style_preset}。")
+        lines.extend(
+            [
+                "构图上适度复刻原卡片花束的主次层次、色块关系和镜头情境，但不要做超现实夸张结构。",
+                "如果预算较低，可以减少花材种类和数量，用重复主花与简洁叶材维持高级感。",
+                "画面要求：单束花为主体，真实包装，花店样片质感，柔和自然光，背景干净，审美克制。",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _generate_remake_preview(self, result: BouquetResult, plan: RemakePlan) -> tuple[str, str]:
+        try:
+            output_path = create_result_path("emotion_remake", result.result_id, ".png")
+            generated_path = text2image(plan.preview_prompt, str(output_path), size="1K")
+            return public_upload_url(generated_path), "generated"
+        except Exception:
+            return result.image_url, "fallback"
+
+    def _ordered_unique(self, values: list[str]) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            normalized = str(value).strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(normalized)
+        return ordered

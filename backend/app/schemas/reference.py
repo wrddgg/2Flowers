@@ -24,6 +24,10 @@ class ReferenceItem(BaseModel):
     score: int | None = None
     matched_tags: list[str] = Field(default_factory=list)
     score_breakdown: dict[str, int] = Field(default_factory=dict)
+    preferred_display_mode: str = "image_only_modal"
+    show_title_by_default: bool = False
+    show_reason_by_default: bool = False
+    show_link_by_default: bool = False
 
 
 class ReferenceSearchRequest(BaseModel):

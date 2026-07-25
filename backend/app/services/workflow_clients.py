@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from app.config.runtime import is_test_mode
+from app.utils.image_assets import to_provider_image_input
 
 
 def upload_root() -> Path:
@@ -76,6 +77,57 @@ def call_text_json(
         raw = "".join(
             part.get("text", "") for part in raw if isinstance(part, dict)
         )
+    return json.loads(raw)
+
+
+def call_multimodal_json(
+    prompt: str,
+    image_urls: list[str],
+    model: str | None = None,
+    *,
+    system_prompt: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    resolved_base_url = (base_url or _chat_base_url()).rstrip("/")
+    resolved_api_key = api_key or _api_key()
+    if is_test_mode() or not resolved_base_url or not resolved_api_key:
+        raise RuntimeError("multimodal model unavailable")
+    endpoint = f"{resolved_base_url}/chat/completions"
+    user_content: list[dict[str, Any]] = []
+    for image_url in image_urls:
+        cleaned = str(image_url or "").strip()
+        if not cleaned:
+            continue
+        user_content.append({"type": "image_url", "image_url": {"url": to_provider_image_input(cleaned)}})
+    user_content.append({"type": "text", "text": prompt})
+
+    messages: list[dict[str, object]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_content})
+    payload = {
+        "model": model or os.getenv("QWEN_TEXT_MODEL", "qwen-vl-max-latest"),
+        "messages": messages,
+        "response_format": {"type": "json_object"},
+        "temperature": 0.2,
+    }
+    with httpx.Client(timeout=120.0) as client:
+        response = client.post(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {resolved_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+
+    raw = (((response.json().get("choices") or [{}])[0]).get("message") or {}).get("content")
+    if not raw:
+        raise RuntimeError("multimodal model returned empty content")
+    if isinstance(raw, list):
+        raw = "".join(part.get("text", "") for part in raw if isinstance(part, dict))
     return json.loads(raw)
 
 

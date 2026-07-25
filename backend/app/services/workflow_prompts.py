@@ -21,6 +21,15 @@ TUTORIAL_EXPERT_SYSTEM_PROMPT = (
 )
 
 
+TUTORIAL_IMAGE_REVIEW_SYSTEM_PROMPT = (
+    "你是“万物生花”的教程配图审核专家。"
+    "你要判断教程步骤图是否真实、自然、符合给定步骤与参考花束。"
+    "不要美化明显错误的图片，不要放过不合理结构。"
+    "你的审核要偏严格，只要出现明显 AI 痕迹、主体截断、步骤动作不对，就应该判定不通过。"
+    "只输出严格 JSON。"
+)
+
+
 SHARE_PLANNER_SYSTEM_PROMPT = (
     "你是“万物生花”的分享策划专家。"
     "你的职责是先规划这张卡片该如何表达：强调什么情绪、使用什么语气、"
@@ -66,9 +75,39 @@ def build_tutorial_generation_prompt(*, flowers: list[str], plan: dict[str, obje
         "2. title 控制在 4~8 字，description 要具体、可操作。\n"
         "3. image_prompt 用于后续配图，必须突出本步关键动作，不要写抽象情绪词。\n"
         "4. 教程要体现花艺专家的判断：少而准，不要为了显得完整而加空步骤。\n"
+        "5. image_prompt 必须说明镜头视角、手部动作、花材状态、画幅完整，不要裁掉花头或花瓶，不要出现不合理肢体。\n"
         f"花材：{flowers_text}\n"
         f"教学规划：{json.dumps(plan, ensure_ascii=False)}\n"
         '输出 JSON：{"steps":[{"step":1,"title":"醒花与修剪","description":"...","image_prompt":"..."}]}'
+    )
+
+
+def build_tutorial_image_review_prompt(
+    *,
+    step_title: str,
+    step_description: str,
+    step_image_prompt: str,
+    flowers_text: str,
+    has_bouquet_reference: bool,
+) -> str:
+    return (
+        "请审核这张教程步骤图是否可以直接展示给用户。\n"
+        "审核标准：\n"
+        "1. 必须符合当前步骤动作，不可答非所问。\n"
+        "2. 花材必须真实，不能出现不合理花型、奇怪花芯、错误肢体、漂浮工具等 AI 痕迹。\n"
+        "3. 构图必须完整，不要把主体花头、手部关键动作或容器明显截断。\n"
+        "4. 如果提供了成品参考花束，要判断当前步骤图是否与参考花束的主要花材和气质一致。\n"
+        "5. 如果不合格，必须给出可执行的 retry_prompt_hint，帮助重新生成。\n"
+        "6. blocking_issues 只填写必须直接判失败的问题，例如：主体截断、肢体错误、工具漂浮、花材失真、步骤动作错误。\n"
+        "7. score 使用 0~1，0.75 以下视为不能直接给用户看。\n"
+        f"步骤标题：{step_title}\n"
+        f"步骤说明：{step_description}\n"
+        f"步骤配图提示：{step_image_prompt}\n"
+        f"花材列表：{flowers_text}\n"
+        f"是否提供成品参考花束：{'是' if has_bouquet_reference else '否'}\n"
+        '输出 JSON：{"pass":true,"score":0.82,"issues":["..."],"blocking_issues":["..."],'
+        '"action_ok":true,"composition_ok":true,"botany_ok":true,"reference_consistency_ok":true,'
+        '"review_summary":"...","retry_prompt_hint":"..."}'
     )
 
 

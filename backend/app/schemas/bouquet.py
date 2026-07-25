@@ -16,6 +16,15 @@ ColorStrategy = Literal["single_tone", "dual_tone", "accent"]
 BouquetDensity = Literal["dense", "medium", "airy"]
 ScenePreset = Literal["礼宾赠礼", "庆祝纪念", "恋人赠礼", "日常居家"]
 StylePreset = Literal["东方留白", "法式浪漫", "清新自然", "现代艺术"]
+FlowerMaterialCategory = Literal["main", "transition", "accent", "linear"]
+
+
+class FlowerMaterialPlan(BaseModel):
+    category: FlowerMaterialCategory
+    category_label: str
+    species: list[str] = Field(default_factory=list)
+    stem_count_range: list[int] = Field(default_factory=lambda: [1, 2], min_length=2, max_length=2)
+    strategy: str = ""
 
 
 class FlowerInfo(BaseModel):
@@ -24,8 +33,15 @@ class FlowerInfo(BaseModel):
     type: str
     meaning: str
     role: str
+    category: FlowerMaterialCategory = "main"
+    category_label: str = "主花材"
     point: list[float] = Field(default_factory=list, min_length=2, max_length=2)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    placement_zone: str = ""
+    label_side: str = ""
+    source_hint: str = ""
+    detection_origin: str = "planned_fallback"
+    visible_reason: str = ""
 
 
 class ReferenceUsage(BaseModel):
@@ -36,6 +52,9 @@ class ReferenceUsage(BaseModel):
     reason: str | None = None
     matched_tags: list[str] = Field(default_factory=list)
     score: int | None = None
+    preferred_display_mode: str = "image_only_modal"
+    show_title_by_default: bool = False
+    show_reason_by_default: bool = False
 
 
 class BouquetResult(BaseModel):
@@ -46,6 +65,8 @@ class BouquetResult(BaseModel):
     summary: str
     generation_focus: str = ""
     reference_used: list[ReferenceUsage] = Field(default_factory=list)
+    planned_flowers: list[FlowerMaterialPlan] = Field(default_factory=list)
+    recognized_flowers: list[FlowerInfo] = Field(default_factory=list)
     flowers: list[FlowerInfo] = Field(default_factory=list)
     scene_preset: ScenePreset | None = None
     style_preset: StylePreset | None = None

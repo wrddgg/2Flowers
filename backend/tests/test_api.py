@@ -4,8 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.repositories.bouquet_repository import get_bouquet_repository
 from app.repositories.content_repository import get_content_repository
-from app.schemas.bouquet import GenerateBouquetRequest
+from app.schemas.bouquet import BouquetResult, FlowerInfo, GenerateBouquetRequest
 from app.schemas.input import AnalyzeInputRequest, SelectionBox
 from app.schemas.semantic import SemanticResult
 from app.services.image_generation_provider import (
@@ -20,6 +21,7 @@ from app.services.semantic_recognizer import (
     MockSemanticRecognizer,
     get_semantic_recognizer,
 )
+from app.services.workflow_service import _normalize_tutorial_review_result
 
 
 client = TestClient(app)
@@ -84,6 +86,9 @@ def test_full_demo_flow() -> None:
     references = reference_response.json()["references"]
     assert 1 <= len(references) <= 3
     assert references[0]["cover_url"].startswith("/library/assets/")
+    assert references[0]["preferred_display_mode"] == "image_only_modal"
+    assert references[0]["show_title_by_default"] is False
+    assert references[0]["show_reason_by_default"] is False
 
     generate_response = client.post(
         "/api/bouquet/generate",
@@ -103,15 +108,25 @@ def test_full_demo_flow() -> None:
     assert len(generate_data["plan_used"]) == 3
     assert results[0]["image_url"].startswith("/library/assets/")
     assert results[0]["reference_used"][0]["cover_url"].startswith("/library/assets/")
+    assert results[0]["reference_used"][0]["preferred_display_mode"] == "image_only_modal"
     assert results[0]["scene_preset"] == "庆祝纪念"
     assert results[0]["style_preset"] == "东方留白"
     assert results[0]["explanation"]
     assert results[0]["fit_scenes"]
     assert results[0]["usage_goal"]
     assert results[0]["reality_advice"]
+    assert results[0]["planned_flowers"]
+    assert results[0]["recognized_flowers"]
+    assert results[0]["planned_flowers"][0]["category"] == "main"
+    assert results[0]["recognized_flowers"][0]["category"]
+    assert results[0]["recognized_flowers"][0]["detection_origin"] in {"recognized", "planned_fallback"}
     assert results[0]["flowers"][0]["point"]
+    assert results[0]["flowers"][0]["placement_zone"]
+    assert results[0]["flowers"][0]["label_side"]
+    assert results[0]["flowers"][0]["source_hint"]
     assert max(len(item["flowers"]) for item in results) >= 3
     assert [flower["name"] for flower in results[0]["flowers"]] != [flower["name"] for flower in results[1]["flowers"]]
+    assert [flower["point"] for flower in results[0]["flowers"]] != [flower["point"] for flower in results[1]["flowers"]]
     assert generate_data["plan_used"][0]["scene_preset"] == "庆祝纪念"
 
     result_id = results[0]["result_id"]
@@ -195,7 +210,12 @@ def test_flower_mode_analysis_and_strong_reference_generation() -> None:
     assert results[0]["image_url"].startswith("/library/assets/")
     assert results[0]["reference_used"][0]["title"]
     assert results[0]["reference_used"][0]["cover_url"].startswith("/library/assets/")
+    assert results[0]["planned_flowers"]
+    assert 4 <= sum(len(item["species"]) for item in results[0]["planned_flowers"]) <= 6
     assert results[0]["flowers"][0]["point"]
+    assert results[0]["flowers"][0]["placement_zone"]
+    assert results[0]["flowers"][0]["category_label"]
+    assert results[0]["flowers"][0]["visible_reason"]
     assert len(results[0]["flowers"]) >= 2
     assert [flower["name"] for flower in results[0]["flowers"]] != [flower["name"] for flower in results[1]["flowers"]]
 
@@ -383,6 +403,102 @@ def test_life_mode_delete_flower_and_build_emotion_cards() -> None:
     assert emotion_data["own_card"]["candidates"][0]["bouquet_group_id"]
 
 
+def test_emotion_remake_preview_returns_plan_and_fallback_image() -> None:
+    analyze_response = client.post(
+        "/api/input/analyze",
+        json={
+            "content_id": "scene_001",
+            "image_url": "/mock/assets/placeholder-scene.png",
+            "selection_box": {"x": 10, "y": 20, "width": 200, "height": 150},
+            "voice_text": "把这场雨变成花，送给刚升职的朋友，别太甜"
+        },
+    )
+    assert analyze_response.status_code == 200
+    semantic_result = analyze_response.json()["semantic_result"]
+
+    generate_response = client.post(
+        "/api/bouquet/generate",
+        json={
+            "mode": "scene",
+            "semantic_result": semantic_result,
+            "reference_strategy": "light",
+            "selected_reference_ids": ["flower_blue_white"],
+            "selected_scene": "庆祝纪念",
+            "selected_style": "东方留白",
+        },
+    )
+    assert generate_response.status_code == 200
+    result = generate_response.json()["results"][0]
+
+    response = client.post(
+        "/api/emotion/remake-preview",
+        json={
+            "result_id": result["result_id"],
+            "mode": "scene",
+            "option_type": "same_feeling",
+            "voice_context": "送给刚升职的朋友，别太甜",
+            "budget_level": "auto",
+            "season_month": 7,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["option_type"] == "same_feeling"
+    assert data["option_title"] == "同感觉现货版"
+    assert data["preview_status"] == "fallback"
+    assert data["preview_image_url"] == result["image_url"]
+    assert data["budget_level"] in {"premium", "balanced"}
+    assert data["generation_brief"]
+    assert data["plan"]["title"].startswith("同感觉现货版")
+    assert data["plan"]["selected_flowers"]
+    assert data["plan"]["preserve_points"]
+    assert "现实花束预览图" in data["plan"]["preview_prompt"]
+    assert "7 月" in data["plan"]["seasonality_note"]
+
+
+def test_emotion_remake_preview_applies_budget_and_season_substitutions() -> None:
+    repository = get_bouquet_repository()
+    repository.save_one(
+        BouquetResult(
+            result_id="remake_manual_case",
+            title="测试卡片花束",
+            image_url="/library/assets/flower_blue_white_01.png",
+            tags=["克制", "祝贺"],
+            summary="一束蓝白色、气质克制的卡片花束。",
+            flowers=[
+                FlowerInfo(flower_id="f1", name="芍药", type="主花", meaning="丰盛", role="main"),
+                FlowerInfo(flower_id="f2", name="郁金香", type="主花", meaning="轻盈", role="main"),
+                FlowerInfo(flower_id="f3", name="铃兰", type="点缀", meaning="纯净", role="accent"),
+            ],
+            scene_preset="礼宾赠礼",
+            style_preset="东方留白",
+            fit_scenes=["升职祝贺"],
+        )
+    )
+
+    response = client.post(
+        "/api/emotion/remake-preview",
+        json={
+            "result_id": "remake_manual_case",
+            "mode": "flower",
+            "option_type": "budget_friendly",
+            "voice_context": "送给升职的朋友",
+            "budget_level": "budget",
+            "season_month": 11,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["budget_level"] == "budget"
+    assert data["preview_status"] == "fallback"
+    assert data["plan"]["selected_flowers"] == ["花园玫瑰", "洋桔梗"]
+    assert len(data["plan"]["substitute_flowers"]) >= 2
+    assert data["plan"]["substitute_flowers"][0]["source_flower"] == "芍药"
+    assert "11 月" in data["plan"]["seasonality_note"]
+    assert "减少花材种类与总支数" in "".join(data["plan"]["preserve_points"])
+    assert "已处理的关键替代包括" in data["plan"]["materials_note"]
+
+
 def test_not_found_paths_are_stable() -> None:
     analyze_response = client.post(
         "/api/input/analyze",
@@ -418,6 +534,16 @@ def test_not_found_paths_are_stable() -> None:
         },
     )
     assert emotion_response.status_code == 404
+
+    remake_response = client.post(
+        "/api/emotion/remake-preview",
+        json={
+            "result_id": "not_exists_result",
+            "mode": "scene",
+            "option_type": "same_feeling",
+        },
+    )
+    assert remake_response.status_code == 404
 
 
 def test_annotated_asset_library_is_readable() -> None:
@@ -558,6 +684,37 @@ def test_generate_tutorial_returns_fallback_steps() -> None:
     assert data["code"] == 0
     assert data["data"]["status"] == "done"
     assert len(data["data"]["steps"]) >= 3
+    assert all(step["image_status"] in {"done", "skipped"} for step in data["data"]["steps"])
+    assert all("image_review" in step for step in data["data"]["steps"])
+    assert all("image_review_score" in step for step in data["data"]["steps"])
+    assert all("image_review_issues" in step for step in data["data"]["steps"])
+    assert all("image_retry_count" in step for step in data["data"]["steps"])
+    assert all(step["image_display_fit"] == "contain" for step in data["data"]["steps"])
+    assert all(step["image_display_ratio"] == "3:4" for step in data["data"]["steps"])
+
+
+def test_tutorial_review_normalization_rejects_low_score_and_blocking_issues() -> None:
+    review = _normalize_tutorial_review_result(
+        {
+            "pass": True,
+            "score": 0.62,
+            "issues": ["花头有些失真"],
+            "blocking_issues": ["手部动作错误", "主体被截断"],
+            "action_ok": False,
+            "composition_ok": False,
+            "botany_ok": True,
+            "reference_consistency_ok": True,
+            "review_summary": "动作和构图都不合格",
+            "retry_prompt_hint": "",
+        }
+    )
+
+    assert review["passed"] is False
+    assert review["score"] == 0.62
+    assert "手部动作错误" in review["issues"]
+    assert "主体被截断" in review["issues"]
+    assert review["retry_prompt_hint"]
+    assert review["review_text"] == "动作和构图都不合格"
 
 
 def test_generate_card_returns_local_upload_url() -> None:
@@ -579,6 +736,9 @@ def test_generate_card_returns_local_upload_url() -> None:
     assert data["data"]["card_image"].startswith("/uploads/card/")
     assert data["data"]["compare_layout"] == "triple"
     assert data["data"]["scene_reason"]
+    assert data["data"]["panel_order"] == ["source", "before", "after"]
+    assert data["data"]["panel_labels"]["source"] == "输入素材"
+    assert data["data"]["compare_panels"][0]["image_role"] == "scene_input"
 
 
 def test_semantic_api_contract_request_can_be_built() -> None:

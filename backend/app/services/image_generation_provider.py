@@ -9,7 +9,13 @@ from typing import Any, Protocol
 import httpx
 
 from app.config.runtime import is_test_mode
-from app.schemas.bouquet import BouquetResult, FlowerInfo, GenerateBouquetRequest, GenerationVariantPlan
+from app.schemas.bouquet import (
+    BouquetResult,
+    FlowerInfo,
+    FlowerMaterialPlan,
+    GenerateBouquetRequest,
+    GenerationVariantPlan,
+)
 from app.schemas.provider_api import (
     GeneratedBouquetImage,
     ImageGenerationApiRequest,
@@ -17,6 +23,7 @@ from app.schemas.provider_api import (
     ImageGenerationConstraints,
     ProviderReferenceInput,
 )
+from app.services.workflow_clients import call_multimodal_json, resolve_workflow_text_config
 from app.services.bouquet_generator import BouquetGenerator
 from app.utils.image_assets import to_provider_image_input
 from app.utils.text import new_id
@@ -117,6 +124,101 @@ STYLE_FLOWER_HINTS = {
     "清新自然": ["风铃草", "飞燕草", "洋甘菊", "尤加利"],
     "现代艺术": ["火鹤", "绿掌", "白百合", "蓝绣球"],
 }
+
+FLOWER_ZONE_POINTS = {
+    "mass": {
+        "focal_center": [[0.5, 0.3], [0.48, 0.36]],
+        "main_left": [[0.38, 0.38], [0.34, 0.46]],
+        "main_right": [[0.63, 0.39], [0.66, 0.47]],
+        "upper_line": [[0.48, 0.18], [0.6, 0.2]],
+        "side_structure": [[0.28, 0.42], [0.72, 0.44]],
+        "outer_leaf": [[0.24, 0.62], [0.76, 0.62], [0.5, 0.7]],
+        "accent": [[0.44, 0.52], [0.58, 0.54], [0.36, 0.56]],
+    },
+    "layered": {
+        "focal_center": [[0.52, 0.34], [0.48, 0.42]],
+        "main_left": [[0.39, 0.42], [0.34, 0.53]],
+        "main_right": [[0.64, 0.44], [0.69, 0.55]],
+        "upper_line": [[0.42, 0.18], [0.62, 0.22], [0.76, 0.3]],
+        "side_structure": [[0.3, 0.33], [0.72, 0.36]],
+        "outer_leaf": [[0.28, 0.68], [0.74, 0.7], [0.48, 0.78]],
+        "accent": [[0.46, 0.56], [0.58, 0.62], [0.4, 0.63]],
+    },
+    "airy": {
+        "focal_center": [[0.5, 0.38], [0.46, 0.46]],
+        "main_left": [[0.34, 0.46], [0.28, 0.57]],
+        "main_right": [[0.66, 0.44], [0.74, 0.56]],
+        "upper_line": [[0.46, 0.14], [0.66, 0.18], [0.26, 0.24]],
+        "side_structure": [[0.24, 0.36], [0.76, 0.4]],
+        "outer_leaf": [[0.18, 0.68], [0.82, 0.66], [0.5, 0.78]],
+        "accent": [[0.42, 0.58], [0.6, 0.6], [0.32, 0.64]],
+    },
+    "focal": {
+        "focal_center": [[0.52, 0.28], [0.5, 0.36]],
+        "main_left": [[0.4, 0.4], [0.36, 0.5]],
+        "main_right": [[0.64, 0.42], [0.68, 0.52]],
+        "upper_line": [[0.56, 0.14], [0.38, 0.2]],
+        "side_structure": [[0.28, 0.46], [0.74, 0.48]],
+        "outer_leaf": [[0.24, 0.7], [0.78, 0.68], [0.5, 0.78]],
+        "accent": [[0.46, 0.56], [0.58, 0.58], [0.34, 0.6]],
+    },
+}
+
+FLOWER_CATEGORY_LABELS = {
+    "main": "主花材",
+    "transition": "过渡花材",
+    "accent": "点缀花材",
+    "linear": "线性花材",
+}
+
+FLOWER_CATEGORY_STEM_RANGES = {
+    "main": [2, 4],
+    "transition": [2, 4],
+    "accent": [1, 3],
+    "linear": [1, 2],
+}
+
+FLOWER_CATEGORY_LIMITS = {
+    "main": 2,
+    "transition": 2,
+    "accent": 1,
+    "linear": 1,
+}
+
+DEFAULT_CATEGORY_SPECIES_BY_SCENE = {
+    "礼宾赠礼": {
+        "main": ["香槟玫瑰", "白百合"],
+        "transition": ["绿掌", "康乃馨"],
+        "accent": ["珍珠梅"],
+        "linear": ["金鱼草"],
+    },
+    "庆祝纪念": {
+        "main": ["向日葵", "橙玫瑰"],
+        "transition": ["橙洋桔梗", "粉康乃馨"],
+        "accent": ["乒乓菊"],
+        "linear": ["金鱼草"],
+    },
+    "恋人赠礼": {
+        "main": ["奶油玫瑰", "郁金香"],
+        "transition": ["香雪兰", "粉玫瑰"],
+        "accent": ["蕾丝花"],
+        "linear": ["绿铃草"],
+    },
+    "日常居家": {
+        "main": ["白洋桔梗", "白郁金香"],
+        "transition": ["香雪兰", "尤加利"],
+        "accent": ["洋甘菊"],
+        "linear": ["尤加利"],
+    },
+}
+
+FLOWER_RECOGNITION_SYSTEM_PROMPT = (
+    "你是“万物生花”的花材锚点识别专家。"
+    "你的目标不是完整检测整束花，而是为用户交互挑出每种主要花材的一朵代表花。"
+    "请只识别真实可见、名字合理、适合作为交互锚点的花材。"
+    "不确定就跳过，不要乱猜，不要输出虚构花名。"
+    "只输出严格 JSON。"
+)
 
 
 class ImageGenerationProvider(Protocol):
@@ -466,6 +568,9 @@ class ApiImageGenerationProvider:
             f"主花占比：{variant.dominant_flower_ratio:.2f}",
             f"配色策略：{variant.color_strategy}",
             f"花束密度：{variant.bouquet_density}",
+            "材料硬约束：花材必须固定分为主花材、过渡花材、点缀花材、线性花材四类。",
+            "材料硬约束：每类只允许 1-2 种花材，每种 1-4 枝，总种类控制在 4-6 种。",
+            "材料硬约束：各类花材必须清晰可辨，便于后续用户查看、替换、教程制作和再次识别。",
         ]
         if reference_titles:
             prompt_lines.append(
@@ -968,10 +1073,24 @@ def _enrich_bouquet_results(
     enriched: list[BouquetResult] = []
     for index, result in enumerate(results):
         plan = plan_used[min(index, len(plan_used) - 1)] if plan_used else None
-        flowers = _build_variant_flowers(result, plan, selected_references, request)
+        planned_flowers = _build_material_plans(result, plan, selected_references, request)
+        fallback_flowers = _build_anchor_flowers_from_plans(
+            result_id=result.result_id,
+            planned_flowers=planned_flowers,
+            plan=plan,
+        )
+        recognized_flowers = _recognize_generated_flowers(
+            result=result,
+            plan=plan,
+            planned_flowers=planned_flowers,
+            fallback_flowers=fallback_flowers,
+        )
+        flowers = recognized_flowers or fallback_flowers
         enriched.append(
             result.model_copy(
                 update={
+                    "planned_flowers": planned_flowers,
+                    "recognized_flowers": flowers,
                     "flowers": flowers,
                     "scene_preset": plan.scene_preset if plan else _normalize_scene_preset(request.selected_scene, request.mode),
                     "style_preset": plan.style_preset if plan else _normalize_style_preset(request.selected_style, "atmosphere"),
@@ -991,22 +1110,12 @@ def _build_variant_flowers(
     selected_references: list[dict[str, object]],
     request: GenerateBouquetRequest,
 ) -> list[FlowerInfo]:
-    target_count = _resolve_target_flower_count(plan)
-    candidate_names = _collect_variant_flower_candidates(result, plan, selected_references, request)
-    points = LAYOUT_POINTS.get(plan.composition_style if plan else "mass", LAYOUT_POINTS["mass"])
-    enriched: list[FlowerInfo] = []
-    for index, flower_name in enumerate(candidate_names[:target_count]):
-        point = points[min(index, len(points) - 1)]
-        enriched.append(
-            _build_flower_info(
-                result_id=result.result_id,
-                flower_name=flower_name,
-                index=index,
-                plan=plan,
-                point=point,
-            )
-        )
-    return enriched
+    planned_flowers = _build_material_plans(result, plan, selected_references, request)
+    return _build_anchor_flowers_from_plans(
+        result_id=result.result_id,
+        planned_flowers=planned_flowers,
+        plan=plan,
+    )
 
 
 def _resolve_target_flower_count(plan: GenerationVariantPlan | None) -> int:
@@ -1018,6 +1127,387 @@ def _resolve_target_flower_count(plan: GenerationVariantPlan | None) -> int:
         "mixed": 2,
     }.get(plan.material_richness, 1)
     return max(2, min(plan.species_count_cap + richness_bonus, 5))
+
+
+def _build_material_plans(
+    result: BouquetResult,
+    plan: GenerationVariantPlan | None,
+    selected_references: list[dict[str, object]],
+    request: GenerateBouquetRequest,
+) -> list[FlowerMaterialPlan]:
+    candidate_names = _collect_variant_flower_candidates(result, plan, selected_references, request)
+    grouped: dict[str, list[str]] = {key: [] for key in FLOWER_CATEGORY_LABELS}
+
+    for flower_name in candidate_names:
+        category = _classify_flower_material_category(flower_name)
+        if len(grouped[category]) >= FLOWER_CATEGORY_LIMITS[category]:
+            continue
+        if flower_name not in grouped[category]:
+            grouped[category].append(flower_name)
+
+    for category in FLOWER_CATEGORY_LABELS:
+        for fallback_name in _default_species_for_category(category, plan, request):
+            if len(grouped[category]) >= FLOWER_CATEGORY_LIMITS[category]:
+                break
+            if fallback_name not in grouped[category]:
+                grouped[category].append(fallback_name)
+
+    material_plans: list[FlowerMaterialPlan] = []
+    for category in ["main", "transition", "accent", "linear"]:
+        species = grouped[category][: FLOWER_CATEGORY_LIMITS[category]]
+        if not species:
+            continue
+        material_plans.append(
+            FlowerMaterialPlan(
+                category=category,  # type: ignore[arg-type]
+                category_label=FLOWER_CATEGORY_LABELS[category],
+                species=species,
+                stem_count_range=_resolve_stem_count_range(category, plan),
+                strategy=_build_material_strategy(category, species, plan),
+            )
+        )
+    return material_plans
+
+
+def _build_anchor_flowers_from_plans(
+    *,
+    result_id: str,
+    planned_flowers: list[FlowerMaterialPlan],
+    plan: GenerationVariantPlan | None,
+) -> list[FlowerInfo]:
+    anchors: list[FlowerInfo] = []
+    running_index = 0
+    for material in planned_flowers:
+        for species_index, flower_name in enumerate(material.species):
+            placement_zone, point = _resolve_material_anchor_position(material.category, species_index, plan)
+            anchors.append(
+                _build_anchor_flower(
+                    result_id=result_id,
+                    flower_name=flower_name,
+                    anchor_index=running_index,
+                    category=material.category,
+                    point=point,
+                    placement_zone=placement_zone,
+                    confidence=max(0.62, 0.9 - running_index * 0.05),
+                    plan=plan,
+                    detection_origin="planned_fallback",
+                    source_hint="material_plan",
+                    visible_reason=f"按{material.category_label}结构预设一个代表花锚点，便于用户交互替换。",
+                )
+            )
+            running_index += 1
+    return anchors
+
+
+def _recognize_generated_flowers(
+    *,
+    result: BouquetResult,
+    plan: GenerationVariantPlan | None,
+    planned_flowers: list[FlowerMaterialPlan],
+    fallback_flowers: list[FlowerInfo],
+) -> list[FlowerInfo]:
+    if not result.image_url or is_test_mode():
+        return fallback_flowers
+
+    base_url, api_key, model = resolve_workflow_text_config()
+    if not base_url or not api_key:
+        return fallback_flowers
+
+    try:
+        payload = call_multimodal_json(
+            _build_flower_anchor_recognition_prompt(result, plan, planned_flowers),
+            image_urls=[result.image_url],
+            model=model,
+            system_prompt=FLOWER_RECOGNITION_SYSTEM_PROMPT,
+            base_url=base_url,
+            api_key=api_key,
+        )
+        recognized = _normalize_recognized_flowers(
+            payload=payload,
+            result_id=result.result_id,
+            plan=plan,
+            planned_flowers=planned_flowers,
+            fallback_flowers=fallback_flowers,
+        )
+        return recognized or fallback_flowers
+    except Exception:
+        return fallback_flowers
+
+
+def _build_flower_anchor_recognition_prompt(
+    result: BouquetResult,
+    plan: GenerationVariantPlan | None,
+    planned_flowers: list[FlowerMaterialPlan],
+) -> str:
+    material_lines = []
+    for material in planned_flowers:
+        material_lines.append(
+            f"- {material.category}/{material.category_label}: 候选花材 { '、'.join(material.species) }"
+        )
+    return (
+        "请查看这张已经生成完成的花束成品图，并为后续“修改花图”交互挑出代表花锚点。\n"
+        "任务目标：每种主要花材只挑一朵最清晰、最能代表该花材的花，返回名字和归一化坐标。\n"
+        "规则：\n"
+        "1. 只返回适合作为点击锚点的花，不要把同一种花重复返回多次。\n"
+        "2. 优先从候选花材里识别；如果图上明显不是候选，但能确定是同类常见真实花材，也可以输出更合理的真实花名。\n"
+        "3. 不确定就跳过，不要为了凑数量而乱猜。\n"
+        "4. point 采用 0~1 之间的 [x,y] 归一化坐标，落在那朵代表花的中心附近即可。\n"
+        "5. anchors 最多返回 6 个，尽量覆盖主花材、过渡花材、点缀花材、线性花材。\n"
+        f"当前结果标题：{result.title}\n"
+        f"当前结果摘要：{result.summary}\n"
+        f"当前方案：{plan.title if plan else '默认方案'}\n"
+        f"当前风格：{plan.style_preset if plan else result.style_preset or '未指定'}\n"
+        f"当前场景：{plan.scene_preset if plan else result.scene_preset or '未指定'}\n"
+        "候选花材清单：\n"
+        + "\n".join(material_lines)
+        + '\n输出 JSON：{"anchors":[{"category":"main","name":"白玫瑰","point":[0.52,0.31],"confidence":0.9,"visible_reason":"主视觉区域可见典型玫瑰花头"}]}'
+    )
+
+
+def _normalize_recognized_flowers(
+    *,
+    payload: dict[str, Any],
+    result_id: str,
+    plan: GenerationVariantPlan | None,
+    planned_flowers: list[FlowerMaterialPlan],
+    fallback_flowers: list[FlowerInfo],
+) -> list[FlowerInfo]:
+    anchors = payload.get("anchors")
+    if not isinstance(anchors, list):
+        return fallback_flowers
+
+    recognized: list[FlowerInfo] = []
+    category_counts: dict[str, int] = {key: 0 for key in FLOWER_CATEGORY_LABELS}
+    for item in anchors:
+        if not isinstance(item, dict):
+            continue
+        flower_name = str(item.get("name") or "").strip()
+        category = _normalize_material_category(item.get("category"), flower_name)
+        if not flower_name or category_counts[category] >= FLOWER_CATEGORY_LIMITS[category]:
+            continue
+        if not _is_allowed_recognized_name(flower_name, planned_flowers):
+            continue
+        placement_zone, fallback_point = _resolve_material_anchor_position(category, category_counts[category], plan)
+        point = _normalize_anchor_point(item.get("point"), fallback_point)
+        recognized.append(
+            _build_anchor_flower(
+                result_id=result_id,
+                flower_name=flower_name,
+                anchor_index=len(recognized),
+                category=category,
+                point=point,
+                placement_zone=placement_zone,
+                confidence=_normalize_anchor_confidence(item.get("confidence")),
+                plan=plan,
+                detection_origin="recognized",
+                source_hint="image_recognition",
+                visible_reason=str(item.get("visible_reason") or "").strip(),
+            )
+        )
+        category_counts[category] += 1
+
+    return _merge_recognized_with_fallback(recognized, fallback_flowers)
+
+
+def _merge_recognized_with_fallback(
+    recognized: list[FlowerInfo],
+    fallback_flowers: list[FlowerInfo],
+) -> list[FlowerInfo]:
+    merged: list[FlowerInfo] = []
+    seen_keys: set[str] = set()
+    covered_categories: set[str] = set()
+
+    for flower in recognized:
+        key = f"{flower.category}:{flower.name}"
+        if key in seen_keys:
+            continue
+        merged.append(flower)
+        seen_keys.add(key)
+        covered_categories.add(flower.category)
+
+    for flower in fallback_flowers:
+        key = f"{flower.category}:{flower.name}"
+        if key in seen_keys:
+            continue
+        if flower.category in covered_categories and len(merged) >= 4:
+            continue
+        merged.append(flower)
+        seen_keys.add(key)
+        covered_categories.add(flower.category)
+
+    return merged[:6]
+
+
+def _build_anchor_flower(
+    *,
+    result_id: str,
+    flower_name: str,
+    anchor_index: int,
+    category: str,
+    point: list[float],
+    placement_zone: str,
+    confidence: float,
+    plan: GenerationVariantPlan | None,
+    detection_origin: str,
+    source_hint: str,
+    visible_reason: str,
+) -> FlowerInfo:
+    profile = FLOWER_LIBRARY.get(flower_name, {})
+    role = _build_anchor_role(category, plan, profile)
+    label_side = _resolve_label_side(point, placement_zone)
+    return FlowerInfo(
+        flower_id=f"{result_id}_{category}_{anchor_index + 1}",
+        name=flower_name,
+        type=str(profile.get("type") or FLOWER_CATEGORY_LABELS[category]),
+        meaning=str(profile.get("meaning") or "用于帮助用户定位和替换该类花材"),
+        role=role,
+        category=category,  # type: ignore[arg-type]
+        category_label=FLOWER_CATEGORY_LABELS[category],
+        point=point,
+        confidence=confidence,
+        placement_zone=placement_zone,
+        label_side=label_side,
+        source_hint=source_hint,
+        detection_origin=detection_origin,
+        visible_reason=visible_reason,
+    )
+
+
+def _build_anchor_role(category: str, plan: GenerationVariantPlan | None, profile: dict[str, object]) -> str:
+    base = str(profile.get("role") or "承担当前方案中的关键花材角色")
+    category_copy = {
+        "main": "主视觉焦点",
+        "transition": "过渡与层次衔接",
+        "accent": "点缀和节奏补充",
+        "linear": "轮廓延展与线条建立",
+    }.get(category, "当前花束结构")
+    if plan:
+        return f"作为“{plan.title}”里的{category_copy}锚点，{base}"
+    return f"作为{category_copy}锚点，{base}"
+
+
+def _classify_flower_material_category(flower_name: str) -> str:
+    profile = FLOWER_LIBRARY.get(flower_name, {})
+    normalized = f"{flower_name} {profile.get('type', '')}"
+    if any(token in normalized for token in ["线条", "飞燕", "金鱼草", "麦穗", "尤加利", "绿铃草"]):
+        return "linear"
+    if "点缀" in normalized or flower_name in {"蓝星花", "洋甘菊", "珍珠梅", "蕾丝花", "乒乓菊"}:
+        return "accent"
+    if any(token in normalized for token in ["主花", "焦点", "玫瑰", "百合", "郁金香", "向日葵", "芍药", "火鹤"]):
+        return "main"
+    return "transition"
+
+
+def _default_species_for_category(
+    category: str,
+    plan: GenerationVariantPlan | None,
+    request: GenerateBouquetRequest,
+) -> list[str]:
+    scene_key = plan.scene_preset if plan else _normalize_scene_preset(request.selected_scene, request.mode)
+    scene_defaults = DEFAULT_CATEGORY_SPECIES_BY_SCENE.get(scene_key, DEFAULT_CATEGORY_SPECIES_BY_SCENE["庆祝纪念"])
+    defaults = list(scene_defaults.get(category, []))
+    semantic_defaults = [
+        name for name in _flowers_from_semantic(request.semantic_result.color_palette, request.semantic_result.visual_tags)
+        if _classify_flower_material_category(name) == category
+    ]
+    relation_defaults = [
+        name for name in _flowers_from_relation(request.semantic_result.relation_tags)
+        if _classify_flower_material_category(name) == category
+    ]
+    merged: list[str] = []
+    for name in semantic_defaults + relation_defaults + defaults:
+        if name not in merged:
+            merged.append(name)
+    return merged
+
+
+def _resolve_stem_count_range(category: str, plan: GenerationVariantPlan | None) -> list[int]:
+    base = list(FLOWER_CATEGORY_STEM_RANGES[category])
+    if not plan:
+        return base
+    if plan.bouquet_density == "airy":
+        return [max(1, base[0] - 1), max(base[0], base[1] - 1)]
+    if plan.bouquet_density == "dense" and category in {"main", "transition"}:
+        return [base[0] + 1, base[1] + 1]
+    return base
+
+
+def _build_material_strategy(category: str, species: list[str], plan: GenerationVariantPlan | None) -> str:
+    category_goal = {
+        "main": "负责主视觉焦点和用户第一眼记忆点",
+        "transition": "负责连接主花与外围材料，避免结构生硬断开",
+        "accent": "负责节奏、细节和轻盈点缀",
+        "linear": "负责拉出外轮廓和空间方向",
+    }.get(category, "负责当前花束结构")
+    plan_text = f"当前方案“{plan.title}”中，" if plan else ""
+    return f"{plan_text}{'、'.join(species)} {category_goal}。"
+
+
+def _resolve_material_anchor_position(
+    category: str,
+    species_index: int,
+    plan: GenerationVariantPlan | None,
+) -> tuple[str, list[float]]:
+    composition_style = plan.composition_style if plan else "mass"
+    zone_points = FLOWER_ZONE_POINTS.get(composition_style, FLOWER_ZONE_POINTS["mass"])
+    ordered_zones = {
+        "main": ["focal_center", "main_left", "main_right"],
+        "transition": ["main_right", "side_structure", "main_left"],
+        "accent": ["accent", "accent"],
+        "linear": ["upper_line", "upper_line"],
+    }.get(category, ["focal_center"])
+    zone = ordered_zones[min(species_index, len(ordered_zones) - 1)]
+    points = zone_points.get(zone) or [[0.5, 0.5]]
+    point = points[min(species_index, len(points) - 1)]
+    return zone, point
+
+
+def _normalize_material_category(value: object, flower_name: str) -> str:
+    candidate = str(value or "").strip().lower()
+    mapping = {
+        "main": "main",
+        "主花": "main",
+        "主花材": "main",
+        "transition": "transition",
+        "过渡": "transition",
+        "过渡花材": "transition",
+        "accent": "accent",
+        "点缀": "accent",
+        "点缀花材": "accent",
+        "linear": "linear",
+        "线性": "linear",
+        "线性花材": "linear",
+    }
+    if candidate in mapping:
+        return mapping[candidate]
+    return _classify_flower_material_category(flower_name)
+
+
+def _is_allowed_recognized_name(flower_name: str, planned_flowers: list[FlowerMaterialPlan]) -> bool:
+    if flower_name in FLOWER_LIBRARY:
+        return True
+    planned_species = {name for material in planned_flowers for name in material.species}
+    return flower_name in planned_species
+
+
+def _normalize_anchor_point(value: object, fallback_point: list[float]) -> list[float]:
+    if isinstance(value, list) and len(value) >= 2:
+        try:
+            x = float(value[0])
+            y = float(value[1])
+            if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+                return [x, y]
+        except (TypeError, ValueError):
+            pass
+    return fallback_point
+
+
+def _normalize_anchor_confidence(value: object) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        confidence = 0.78
+    return max(0.0, min(1.0, confidence))
 
 
 def _collect_variant_flower_candidates(
@@ -1037,15 +1527,19 @@ def _collect_variant_flower_candidates(
             ordered.append(cleaned)
             seen.add(cleaned)
 
-    push([flower.name for flower in result.flowers])
-    for reference in selected_references[:2]:
-        push([str(item) for item in reference.get("flower_types", []) if str(item).strip()])
     if plan:
         push(FOCUS_FLOWER_HINTS.get(plan.focus, []))
         push(SCENE_FLOWER_HINTS.get(plan.scene_preset or "", []))
         push(STYLE_FLOWER_HINTS.get(plan.style_preset or "", []))
+    if plan and plan.reference_strategy == "strong":
+        for reference in selected_references[:2]:
+            push([str(item) for item in reference.get("flower_types", []) if str(item).strip()])
     push(_flowers_from_semantic(request.semantic_result.color_palette, request.semantic_result.visual_tags))
     push(_flowers_from_relation(request.semantic_result.relation_tags))
+    if plan and plan.reference_strategy != "none":
+        for reference in selected_references[:2]:
+            push([str(item) for item in reference.get("flower_types", []) if str(item).strip()])
+    push([flower.name for flower in result.flowers])
     if len(ordered) < 2:
         push(["白洋桔梗", "尤加利", "白玫瑰"])
     return ordered
@@ -1087,21 +1581,92 @@ def _build_flower_info(
 ) -> FlowerInfo:
     profile = FLOWER_LIBRARY.get(flower_name, {})
     fallback_type = "主花" if index == 0 else "辅助花"
+    flower_type = str(profile.get("type") or fallback_type)
+    material_category = _classify_flower_material_category(flower_name)
     role = str(profile.get("role") or "补充当前方案的材料层次与花束结构")
     if index == 0:
         role = f"作为 {plan.title if plan else '当前方案'} 的主视觉焦点，{role}" if plan else role
     elif index == 1:
         role = f"作为 {plan.title if plan else '当前方案'} 的第二层结构，{role}" if plan else role
     confidence = max(0.56, 0.93 - index * 0.07)
+    placement_zone, point, label_side = _resolve_flower_layout(
+        flower_name=flower_name,
+        flower_type=flower_type,
+        index=index,
+        plan=plan,
+        default_point=point,
+    )
     return FlowerInfo(
         flower_id=f"{result_id}_{index + 1}",
         name=flower_name,
-        type=str(profile.get("type") or fallback_type),
+        type=flower_type,
         meaning=str(profile.get("meaning") or "用于支撑当前方案的气质表达"),
         role=role,
+        category=material_category,  # type: ignore[arg-type]
+        category_label=FLOWER_CATEGORY_LABELS[material_category],
         point=point,
         confidence=confidence,
+        placement_zone=placement_zone,
+        label_side=label_side,
+        source_hint=_resolve_flower_source_hint(flower_name, index, plan),
+        detection_origin="planned_fallback",
+        visible_reason="按方案花材结构推断得到的默认代表花位置。",
     )
+
+
+def _resolve_flower_layout(
+    *,
+    flower_name: str,
+    flower_type: str,
+    index: int,
+    plan: GenerationVariantPlan | None,
+    default_point: list[float],
+) -> tuple[str, list[float], str]:
+    composition_style = plan.composition_style if plan else "mass"
+    category = _resolve_flower_layout_category(flower_name, flower_type, index)
+    zone_points = FLOWER_ZONE_POINTS.get(composition_style, FLOWER_ZONE_POINTS["mass"])
+    points = zone_points.get(category) or [default_point]
+    point = points[index % len(points)]
+    label_side = _resolve_label_side(point, category)
+    return category, point, label_side
+
+
+def _resolve_flower_layout_category(flower_name: str, flower_type: str, index: int) -> str:
+    normalized = f"{flower_name} {flower_type}"
+    if index == 0 or "焦点" in normalized:
+        return "focal_center"
+    if "线条" in normalized:
+        return "upper_line"
+    if "叶材" in normalized or "配叶" in normalized:
+        return "outer_leaf"
+    if "结构" in normalized:
+        return "side_structure"
+    if "点缀" in normalized:
+        return "accent"
+    if index % 2 == 1:
+        return "main_left"
+    return "main_right"
+
+
+def _resolve_label_side(point: list[float], placement_zone: str) -> str:
+    x, y = point
+    if placement_zone == "upper_line" or y < 0.22:
+        return "top"
+    if placement_zone == "outer_leaf" and y > 0.64:
+        return "bottom"
+    return "left" if x >= 0.5 else "right"
+
+
+def _resolve_flower_source_hint(flower_name: str, index: int, plan: GenerationVariantPlan | None) -> str:
+    if index == 0:
+        return "plan_primary"
+    if plan and flower_name in FOCUS_FLOWER_HINTS.get(plan.focus, []):
+        return "focus_hint"
+    if plan and flower_name in SCENE_FLOWER_HINTS.get(plan.scene_preset or "", []):
+        return "scene_hint"
+    if plan and flower_name in STYLE_FLOWER_HINTS.get(plan.style_preset or "", []):
+        return "style_hint"
+    return "reference_or_template"
 
 
 def _default_fit_scenes(scene_preset: str) -> list[str]:
