@@ -18,6 +18,7 @@ backend/.pytest_cache/
 backend/uploads/
 backend/reports/workflow_runtime/
 backend/.env
+backend/*.env
 backend/.env.*
 !backend/.env.example
 !backend/.env.demo.example

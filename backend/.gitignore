@@ -6,6 +6,7 @@ reports/workflow_runtime/
 *.db
 *.sqlite
 *.sqlite3
+*.env
 .env
 .env.*
 !.env.example
