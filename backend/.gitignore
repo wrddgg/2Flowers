@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+uploads/
+reports/workflow_runtime/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+!.env.demo.example
+!.env.test.example
+!.env.production.example

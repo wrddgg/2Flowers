@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>局部涂抹改图</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="图片编辑工作区">
+        <div class="topbar">
+          <div>
+            <h1>局部涂抹改图</h1>
+            <p id="imageMeta">上传一张图片开始编辑</p>
+          </div>
+          <label class="upload-button">
+            <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/bmp" />
+            上传图片
+          </label>
+        </div>
+
+        <div class="canvas-wrap">
+          <canvas id="editCanvas" aria-label="图片预览画布"></canvas>
+          <div id="emptyState" class="empty-state">请选择图片</div>
+        </div>
+
+        <div class="tool-row" role="toolbar" aria-label="编辑工具">
+          <button id="brushTool" class="tool-button active" type="button">涂抹</button>
+          <button id="boxTool" class="tool-button" type="button">框选</button>
+          <label class="range-control">
+            笔刷
+            <input id="brushSize" type="range" min="12" max="96" value="40" />
+          </label>
+          <button id="undoButton" class="ghost-button" type="button">撤销</button>
+          <button id="clearButton" class="ghost-button" type="button">清空区域</button>
+          <span id="selectionCount" class="selection-count">0 个区域</span>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="生成控制">
+        <label class="prompt-field">
+          修改指令
+          <textarea id="promptInput" rows="7" placeholder="例如：把涂抹区域改成一束白色玫瑰，保持光照和背景一致。"></textarea>
+        </label>
+        <button id="generateButton" class="generate-button" type="button">生成修改图</button>
+        <p id="statusText" class="status-text" aria-live="polite"></p>
+
+        <div class="result-block">
+          <h2>结果</h2>
+          <img id="resultImage" alt="生成后的图片" />
+        </div>
+      </aside>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

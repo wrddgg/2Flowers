@@ -1,0 +1,24 @@
+from fastapi import APIRouter, HTTPException
+
+from app.repositories.bouquet_repository import get_bouquet_repository
+from app.repositories.content_repository import get_content_repository
+from app.schemas.emotion import EmotionBuildRequest, EmotionBuildResponse
+from app.services.emotion_builder import EmotionBuilder
+
+
+router = APIRouter(prefix="/api/emotion", tags=["emotion"])
+emotion_builder = EmotionBuilder()
+
+
+@router.post("/build", response_model=EmotionBuildResponse)
+def build_emotion(request: EmotionBuildRequest) -> EmotionBuildResponse:
+    bouquet_repository = get_bouquet_repository()
+    content_repository = get_content_repository()
+    result = bouquet_repository.get_result(request.result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"未找到 result_id={request.result_id} 的花束结果")
+    return emotion_builder.build(
+        result=result,
+        voice_context=request.voice_context,
+        reference_candidates=content_repository.list_reference_candidates("flower"),
+    )

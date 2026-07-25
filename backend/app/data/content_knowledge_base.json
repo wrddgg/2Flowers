@@ -1,0 +1,491 @@
+{
+  "content_profiles": {
+    "scene_001": {
+      "base_mode": "scene",
+      "subject_tags": ["雨景", "窗边"],
+      "scene_tags": ["雨景", "安静", "空间装饰"],
+      "emotion_tags": ["克制", "治愈", "留白"],
+      "visual_tags": ["冷色", "轻留白", "空气感"],
+      "color_palette": ["#B7C3D0", "#E5E8ED", "#5C6773"],
+      "relation_tags": []
+    },
+    "scene_002": {
+      "base_mode": "scene",
+      "subject_tags": ["晚霞", "海边"],
+      "scene_tags": ["晚霞", "纪念感", "漫步"],
+      "emotion_tags": ["温柔", "热烈", "梦幻"],
+      "visual_tags": ["暖色", "层次感", "大体量"],
+      "color_palette": ["#F9B28C", "#F47E6A", "#F8D5C2"],
+      "relation_tags": []
+    },
+    "flower_001": {
+      "base_mode": "flower",
+      "subject_tags": ["现成花束", "粉白配色"],
+      "scene_tags": ["送礼", "生日"],
+      "emotion_tags": ["温柔", "甜度适中", "精致"],
+      "visual_tags": ["粉白", "圆润", "礼盒感"],
+      "color_palette": ["#F4D2DF", "#FFF7F9", "#D6B4C7"],
+      "relation_tags": ["朋友"]
+    },
+    "flower_002": {
+      "base_mode": "flower",
+      "subject_tags": ["桌花", "蓝白"],
+      "scene_tags": ["空间装饰", "自用"],
+      "emotion_tags": ["克制", "高级", "治愈"],
+      "visual_tags": ["冷色", "结构感", "轻仪式"],
+      "color_palette": ["#AFC6DE", "#FFFFFF", "#7D8DA3"],
+      "relation_tags": []
+    },
+    "life_001": {
+      "base_mode": "life",
+      "subject_tags": ["升职", "朋友"],
+      "scene_tags": ["送礼", "升职", "庆祝"],
+      "emotion_tags": ["克制", "祝贺", "明亮"],
+      "visual_tags": ["干净", "挺拔", "利落"],
+      "color_palette": ["#F1D880", "#F7F4E8", "#7AA27A"],
+      "relation_tags": ["朋友"]
+    },
+    "life_002": {
+      "base_mode": "life",
+      "subject_tags": ["妈妈", "节日"],
+      "scene_tags": ["送礼", "家人", "节日"],
+      "emotion_tags": ["温暖", "安心", "庄重"],
+      "visual_tags": ["暖白", "柔和", "中体量"],
+      "color_palette": ["#F6E6CC", "#FAF3EA", "#D9B38C"],
+      "relation_tags": ["家人"]
+    }
+  },
+  "references": [
+    {
+      "reference_id": "scene_ref_01",
+      "title": "蓝白窗边桌花",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "scene",
+      "flower_types": ["白洋桔梗", "蓝绣球", "尤加利"],
+      "visual_tags": ["冷色", "轻留白", "桌花"],
+      "emotion_tags": ["安静", "克制", "治愈"],
+      "scene_tags": ["空间装饰", "自用"],
+      "reference_options": ["color", "structure", "composition"]
+    },
+    {
+      "reference_id": "scene_ref_02",
+      "title": "雨幕感玻璃花艺",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-scene.png",
+      "mode": "scene",
+      "flower_types": ["白玫瑰", "银叶菊", "蓝星花"],
+      "visual_tags": ["冷色", "空气感", "透明"],
+      "emotion_tags": ["治愈", "留白", "克制"],
+      "scene_tags": ["雨景", "安静"],
+      "reference_options": ["color", "composition"]
+    },
+    {
+      "reference_id": "scene_ref_03",
+      "title": "晚霞渐变花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "scene",
+      "flower_types": ["橙玫瑰", "粉康乃馨", "落日飞燕"],
+      "visual_tags": ["暖色", "层次感", "大体量"],
+      "emotion_tags": ["温柔", "梦幻", "热烈"],
+      "scene_tags": ["晚霞", "纪念感"],
+      "reference_options": ["color", "structure", "wrapping"]
+    },
+    {
+      "reference_id": "scene_ref_04",
+      "title": "海风野生感花艺",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-scene.png",
+      "mode": "scene",
+      "flower_types": ["飞燕草", "白芍药", "尤加利"],
+      "visual_tags": ["野生感", "松弛", "空气感"],
+      "emotion_tags": ["自由", "治愈", "舒展"],
+      "scene_tags": ["海边", "漫步"],
+      "reference_options": ["structure", "composition"]
+    },
+    {
+      "reference_id": "scene_ref_05",
+      "title": "奶油房间桌花",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "scene",
+      "flower_types": ["奶油玫瑰", "洋甘菊", "香雪兰"],
+      "visual_tags": ["暖白", "柔和", "桌花"],
+      "emotion_tags": ["安心", "温暖", "柔和"],
+      "scene_tags": ["房间", "日常"],
+      "reference_options": ["color", "composition"]
+    },
+    {
+      "reference_id": "scene_ref_06",
+      "title": "雨后绿意台面花",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-scene.png",
+      "mode": "scene",
+      "flower_types": ["绿铃草", "白郁金香", "蕨叶"],
+      "visual_tags": ["冷色", "自然", "中体量"],
+      "emotion_tags": ["治愈", "清新", "克制"],
+      "scene_tags": ["雨景", "桌面"],
+      "reference_options": ["color", "structure"]
+    },
+    {
+      "reference_id": "flower_ref_01",
+      "title": "粉白生日花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "flower",
+      "flower_types": ["粉玫瑰", "白洋桔梗", "珍珠梅"],
+      "visual_tags": ["粉白", "圆润", "礼盒感"],
+      "emotion_tags": ["温柔", "精致", "甜度适中"],
+      "scene_tags": ["生日", "送礼", "朋友"],
+      "reference_options": ["color", "wrapping", "flower_types"]
+    },
+    {
+      "reference_id": "flower_ref_02",
+      "title": "克制蓝白花束",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "flower",
+      "flower_types": ["蓝绣球", "白玫瑰", "尤加利"],
+      "visual_tags": ["冷色", "结构感", "轻仪式"],
+      "emotion_tags": ["克制", "高级", "治愈"],
+      "scene_tags": ["自用", "空间装饰"],
+      "reference_options": ["color", "structure", "composition"]
+    },
+    {
+      "reference_id": "flower_ref_03",
+      "title": "香槟升职祝贺花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "flower",
+      "flower_types": ["香槟玫瑰", "向日葵", "金鱼草"],
+      "visual_tags": ["挺拔", "明亮", "礼赠感"],
+      "emotion_tags": ["祝贺", "明亮", "庄重"],
+      "scene_tags": ["升职", "庆祝", "同事"],
+      "reference_options": ["structure", "flower_types", "wrapping"]
+    },
+    {
+      "reference_id": "flower_ref_04",
+      "title": "奶白轻法式花束",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "flower",
+      "flower_types": ["白郁金香", "香雪兰", "奶油玫瑰"],
+      "visual_tags": ["暖白", "轻法式", "柔和"],
+      "emotion_tags": ["安心", "温暖", "高级"],
+      "scene_tags": ["家人", "节日"],
+      "reference_options": ["color", "flower_types", "composition"]
+    },
+    {
+      "reference_id": "flower_ref_05",
+      "title": "野生感手提花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "flower",
+      "flower_types": ["飞燕草", "风铃草", "麦穗"],
+      "visual_tags": ["野生感", "松弛", "高低错落"],
+      "emotion_tags": ["自由", "舒展", "轻松"],
+      "scene_tags": ["日常", "收藏"],
+      "reference_options": ["structure", "composition"]
+    },
+    {
+      "reference_id": "flower_ref_06",
+      "title": "红橙情绪花束",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-flower.png",
+      "mode": "flower",
+      "flower_types": ["橙玫瑰", "火鹤", "重瓣康乃馨"],
+      "visual_tags": ["暖色", "饱满", "中大体量"],
+      "emotion_tags": ["热烈", "纪念感", "表达力强"],
+      "scene_tags": ["纪念日", "送礼"],
+      "reference_options": ["color", "flower_types", "wrapping"]
+    },
+    {
+      "reference_id": "life_ref_01",
+      "title": "升职祝贺向日葵花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-life.png",
+      "mode": "life",
+      "flower_types": ["向日葵", "香槟玫瑰", "金鱼草"],
+      "visual_tags": ["挺拔", "利落", "明亮"],
+      "emotion_tags": ["祝贺", "积极", "克制"],
+      "scene_tags": ["升职", "朋友", "送礼"],
+      "reference_options": ["flower_types", "structure", "wrapping"]
+    },
+    {
+      "reference_id": "life_ref_02",
+      "title": "送妈妈暖白花束",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-life.png",
+      "mode": "life",
+      "flower_types": ["白百合", "香槟玫瑰", "康乃馨"],
+      "visual_tags": ["暖白", "庄重", "柔和"],
+      "emotion_tags": ["安心", "庄重", "温暖"],
+      "scene_tags": ["妈妈", "家人", "节日"],
+      "reference_options": ["flower_types", "color", "composition"]
+    },
+    {
+      "reference_id": "life_ref_03",
+      "title": "朋友生日粉橘花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-life.png",
+      "mode": "life",
+      "flower_types": ["粉玫瑰", "橙洋桔梗", "乒乓菊"],
+      "visual_tags": ["粉橘", "圆润", "轻礼物感"],
+      "emotion_tags": ["温柔", "明亮", "亲近"],
+      "scene_tags": ["朋友", "生日", "送礼"],
+      "reference_options": ["color", "wrapping", "flower_types"]
+    },
+    {
+      "reference_id": "life_ref_04",
+      "title": "同事探望克制花束",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-life.png",
+      "mode": "life",
+      "flower_types": ["白洋桔梗", "绿铃草", "尤加利"],
+      "visual_tags": ["干净", "克制", "轻包装"],
+      "emotion_tags": ["治愈", "分寸感", "温和"],
+      "scene_tags": ["同事", "探望", "送礼"],
+      "reference_options": ["structure", "composition", "wrapping"]
+    },
+    {
+      "reference_id": "life_ref_05",
+      "title": "恋人纪念日奶油花束",
+      "source_type": "video",
+      "cover_url": "/mock/assets/placeholder-life.png",
+      "mode": "life",
+      "flower_types": ["奶油玫瑰", "郁金香", "蕾丝花"],
+      "visual_tags": ["暖白", "层次感", "柔软"],
+      "emotion_tags": ["温柔", "纪念感", "梦幻"],
+      "scene_tags": ["恋人", "纪念日", "送礼"],
+      "reference_options": ["flower_types", "color", "wrapping"]
+    },
+    {
+      "reference_id": "life_ref_06",
+      "title": "领导感谢利落花束",
+      "source_type": "image",
+      "cover_url": "/mock/assets/placeholder-life.png",
+      "mode": "life",
+      "flower_types": ["白百合", "绿掌", "香槟玫瑰"],
+      "visual_tags": ["利落", "挺拔", "中体量"],
+      "emotion_tags": ["庄重", "分寸感", "高级"],
+      "scene_tags": ["领导", "感谢", "送礼"],
+      "reference_options": ["structure", "flower_types", "wrapping"]
+    }
+  ],
+  "bouquet_templates": {
+    "scene": [
+      {
+        "template_id": "scene_bouquet_v1",
+        "title": "雨后安静",
+        "image_url": "/mock/assets/placeholder-flower.png",
+        "tags": ["克制", "治愈", "适合收藏"],
+        "summary": "保留了冷色和留白感，让花束像雨停后的空气一样轻",
+        "flowers": [
+          {
+            "flower_id": "f_scene_01",
+            "name": "白洋桔梗",
+            "type": "主花",
+            "meaning": "温柔、克制",
+            "role": "负责留白与整体安静感"
+          },
+          {
+            "flower_id": "f_scene_02",
+            "name": "蓝绣球",
+            "type": "结构花",
+            "meaning": "包裹感与层次",
+            "role": "提供冷色主体与空间感"
+          }
+        ]
+      },
+      {
+        "template_id": "scene_bouquet_v2",
+        "title": "窗边留白",
+        "image_url": "/mock/assets/placeholder-scene.png",
+        "tags": ["空气感", "轻盈", "冷色"],
+        "summary": "更强调空间感与轻留白，像把窗边光线折进花里",
+        "flowers": [
+          {
+            "flower_id": "f_scene_03",
+            "name": "白郁金香",
+            "type": "主花",
+            "meaning": "安静而有呼吸感",
+            "role": "承接轻盈与利落的主轮廓"
+          },
+          {
+            "flower_id": "f_scene_04",
+            "name": "银叶菊",
+            "type": "配叶",
+            "meaning": "冷静、柔化边界",
+            "role": "把画面冷感柔和地串起来"
+          }
+        ]
+      },
+      {
+        "template_id": "scene_bouquet_v3",
+        "title": "雾色桌花",
+        "image_url": "/mock/assets/placeholder-flower.png",
+        "tags": ["桌花", "克制", "空间装饰"],
+        "summary": "将画面的静谧感收束成更适合现实桌面的表达",
+        "flowers": [
+          {
+            "flower_id": "f_scene_05",
+            "name": "绿铃草",
+            "type": "线条花",
+            "meaning": "轻松、舒展",
+            "role": "延展雾气一样的线条感"
+          },
+          {
+            "flower_id": "f_scene_06",
+            "name": "白玫瑰",
+            "type": "主花",
+            "meaning": "安稳、纯净",
+            "role": "作为现实承接中的视觉锚点"
+          }
+        ]
+      }
+    ],
+    "flower": [
+      {
+        "template_id": "flower_bouquet_v1",
+        "title": "柔粉重组",
+        "image_url": "/mock/assets/placeholder-flower.png",
+        "tags": ["温柔", "精致", "朋友向"],
+        "summary": "保留原花束的柔粉情绪，但让结构更干净",
+        "flowers": [
+          {
+            "flower_id": "f_flower_01",
+            "name": "粉玫瑰",
+            "type": "主花",
+            "meaning": "温柔、亲近",
+            "role": "延续原花束的情绪中心"
+          },
+          {
+            "flower_id": "f_flower_02",
+            "name": "白洋桔梗",
+            "type": "辅助花",
+            "meaning": "缓冲甜度",
+            "role": "让整体更透气，不会过满"
+          }
+        ]
+      },
+      {
+        "template_id": "flower_bouquet_v2",
+        "title": "蓝白克制版",
+        "image_url": "/mock/assets/placeholder-flower.png",
+        "tags": ["高级", "克制", "可送礼"],
+        "summary": "把原始花束往更冷静的方向收束，适合更有分寸的表达",
+        "flowers": [
+          {
+            "flower_id": "f_flower_03",
+            "name": "蓝绣球",
+            "type": "结构花",
+            "meaning": "稳定、包裹",
+            "role": "让视觉更集中并提升高级感"
+          },
+          {
+            "flower_id": "f_flower_04",
+            "name": "白玫瑰",
+            "type": "主花",
+            "meaning": "纯净、克制",
+            "role": "压住甜度，增强分寸感"
+          }
+        ]
+      },
+      {
+        "template_id": "flower_bouquet_v3",
+        "title": "野生轻改版",
+        "image_url": "/mock/assets/placeholder-life.png",
+        "tags": ["野生感", "松弛", "更有作品感"],
+        "summary": "减少包装存在感，让花材本身更自然地说话",
+        "flowers": [
+          {
+            "flower_id": "f_flower_05",
+            "name": "飞燕草",
+            "type": "线条花",
+            "meaning": "自由、上扬",
+            "role": "给花束增加不刻意的节奏"
+          },
+          {
+            "flower_id": "f_flower_06",
+            "name": "风铃草",
+            "type": "辅助花",
+            "meaning": "松弛、呼吸感",
+            "role": "补足轻盈层次"
+          }
+        ]
+      }
+    ],
+    "life": [
+      {
+        "template_id": "life_bouquet_v1",
+        "title": "新阶段祝贺",
+        "image_url": "/mock/assets/placeholder-life.png",
+        "tags": ["祝贺", "明亮", "朋友适配"],
+        "summary": "更适合阶段性节点表达，明亮但不过分张扬",
+        "flowers": [
+          {
+            "flower_id": "f_life_01",
+            "name": "向日葵",
+            "type": "主花",
+            "meaning": "积极、向上",
+            "role": "承接升职或庆祝场景的主情绪"
+          },
+          {
+            "flower_id": "f_life_02",
+            "name": "香槟玫瑰",
+            "type": "辅助花",
+            "meaning": "成熟、分寸感",
+            "role": "让祝贺感更柔和更得体"
+          }
+        ]
+      },
+      {
+        "template_id": "life_bouquet_v2",
+        "title": "家人安心版",
+        "image_url": "/mock/assets/placeholder-life.png",
+        "tags": ["温暖", "庄重", "家人向"],
+        "summary": "把人物关系中的关心感转成更安心的暖白表达",
+        "flowers": [
+          {
+            "flower_id": "f_life_03",
+            "name": "白百合",
+            "type": "主花",
+            "meaning": "安稳、庄重",
+            "role": "负责家庭关系中的正式感"
+          },
+          {
+            "flower_id": "f_life_04",
+            "name": "康乃馨",
+            "type": "辅助花",
+            "meaning": "照顾、温暖",
+            "role": "增加柔和的人情味"
+          }
+        ]
+      },
+      {
+        "template_id": "life_bouquet_v3",
+        "title": "有分寸的心意",
+        "image_url": "/mock/assets/placeholder-flower.png",
+        "tags": ["克制", "分寸感", "适合送礼"],
+        "summary": "保留关系中的温度，同时避免显得过甜或过重",
+        "flowers": [
+          {
+            "flower_id": "f_life_05",
+            "name": "白洋桔梗",
+            "type": "主花",
+            "meaning": "真诚、克制",
+            "role": "让关系表达更舒服"
+          },
+          {
+            "flower_id": "f_life_06",
+            "name": "绿掌",
+            "type": "结构叶材",
+            "meaning": "清爽、利落",
+            "role": "把整体轮廓收得更干净"
+          }
+        ]
+      }
+    ]
+  }
+}

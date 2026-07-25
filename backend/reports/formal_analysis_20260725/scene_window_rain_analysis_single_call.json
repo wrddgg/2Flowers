@@ -1,0 +1,276 @@
+{
+  "request": {
+    "content_id": "scene_window_rain",
+    "image_url": "/library/assets/scene_window_rain_01.png",
+    "selection_box": {
+      "x": 12,
+      "y": 16,
+      "width": 180,
+      "height": 140
+    },
+    "voice_text": "想把这个画面的安静和轻治愈感，变成一束可以送朋友的花。"
+  },
+  "content_profile": {
+    "base_mode": "scene",
+    "subject_tags": [
+      "窗边雨幕",
+      "蓝白克制花束"
+    ],
+    "scene_tags": [
+      "窗边",
+      "雨天",
+      "室内"
+    ],
+    "emotion_tags": [
+      "安抚",
+      "内向",
+      "轻治愈"
+    ],
+    "visual_tags": [
+      "玻璃雨滴",
+      "模糊背景",
+      "暖灯",
+      "近景质感"
+    ],
+    "color_palette": [],
+    "relation_tags": [],
+    "group_id": "scene_window_rain",
+    "images": [
+      "scene_window_rain_01.png",
+      "scene_window_rain_02.png",
+      "scene_window_rain_03.png",
+      "scene_window_rain_04.png",
+      "scene_window_rain_05.png"
+    ],
+    "source_type": "annotated_asset"
+  },
+  "prompt": "你是“万物生花”的多模态语义识别器，目标不是写一段泛化图像描述，而是提取后续花艺匹配真正需要的语义。\n“万物生花”的意思是：把用户看到的人、场景、情绪和关系，转译成合适的花艺表达与生花方向。\n请结合图片、selection_box 焦点区域和用户补充文本，先识别元素类型，再给出 1 到 3 个最值得保留的解读候选，输出一个严格 JSON 对象。\n\n判断优先级：\n1. 先识别图中主要元素，可用 element_type 包括：scene、flower、person、portrait、gift_context、global。\n2. 再判断主解读 mode：scene 表示氛围/空间/景别，flower 表示花束或花艺成品本身，life 表示带有人、关系、送礼对象或人生事件的现实情境。纯人像、自拍、个人气质图，一般仍归入 life，但要在 interpretation_options 中显式给出 portrait/person 视角。\n3. 如果只识别到单一强元素，可直接给出一个主解读；如果存在多种合理视角，必须返回 2 到 3 个 interpretation_options，并用 needs_user_choice 标记是否值得让用户选择。\n4. interpretation_options 中必须包含一种更综合的 global 或全局视角，用来表达系统对整体气质的理解。\n5. 先尊重图片里真实可见的信息，再用用户文本补充 use_intent、关系对象和用途，不要让文本覆盖明显的视觉事实。\n6. 只提取能转译为花艺方案的语义，例如氛围、色调、质感、关系、场景、人物气质和用途；不要沉迷于无关细节、品牌、文字或复杂背景。\n7. 对每个 interpretation_option，要补充 explanation 和 alignment_axes，说明你是从哪些维度完成花艺转译的，例如色彩对齐、花语对齐、气质对齐、材质对齐、关系语境对齐。\n8. planner_summary 需要说明为什么保留这些候选解读，以及建议优先尝试哪一个。\n9. taxonomy 和 candidate_tags 只是候选约束，不是必须照抄；只在确实匹配图片或文本时选择。\n\n输出规则：\n1. mode 只能是 scene / flower / life。\n2. confidence 返回 0 到 1 的小数。\n3. evidence 提供 2 到 4 个短语，说明你为什么这样判断。\n4. subject_tags、scene_tags、emotion_tags、visual_tags、relation_tags、color_palette、translation_axes 都尽量短，单项最多 4 个。\n5. scene_tags、emotion_tags、visual_tags、relation_tags 尽量优先从 taxonomy 中选；没有合适项时再给自然但简洁的中文标签。\n6. use_intent 只能是 表达氛围 / gift / self / decorate / celebrate。如果缺乏明确送礼或装饰意图，scene 默认优先考虑“表达氛围”。\n7. semantic_summary 用 1 句话概括这张图最终想传达并适合被转成花束的感觉。\n8. raw_caption 用 1 句话忠实描述可见内容。\n9. interpretation_options 最多 3 个，每个 option 都要内嵌一个 semantic_result。\n10. 只返回 JSON 对象，不要 Markdown，不要解释，不要额外字段。\n\nselection_box={\"x\": 12, \"y\": 16, \"width\": 180, \"height\": 140}\nvoice_text=想把这个画面的安静和轻治愈感，变成一束可以送朋友的花。\ntaxonomy={\"allowed_modes\": [\"scene\", \"flower\", \"life\"], \"scene_tags\": [\"窗边\", \"雨天\", \"室内\"], \"emotion_tags\": [\"安抚\", \"内向\", \"轻治愈\"], \"visual_tags\": [\"玻璃雨滴\", \"模糊背景\", \"暖灯\", \"近景质感\"], \"relation_tags\": [], \"use_intents\": [\"表达氛围\", \"gift\", \"self\", \"decorate\", \"celebrate\"], \"candidate_tags\": [\"窗边雨幕\", \"蓝白克制花束\", \"窗边\", \"雨天\", \"室内\", \"安抚\", \"内向\", \"轻治愈\", \"玻璃雨滴\", \"模糊背景\", \"暖灯\", \"近景质感\"]}\n\n输出 JSON 结构：{\"mode\":\"scene\",\"confidence\":0.85,\"evidence\":[\"...\"],\"detected_elements\":[{\"element_type\":\"scene\",\"confidence\":0.91,\"reason\":\"...\"}],\"needs_user_choice\":true,\"planner_summary\":\"...\",\"recommended_interpretation_id\":\"option_scene\",\"subject_tags\":[\"...\"],\"scene_tags\":[\"...\"],\"emotion_tags\":[\"...\"],\"visual_tags\":[\"...\"],\"color_palette\":[\"...\"],\"relation_tags\":[\"...\"],\"translation_axes\":[\"色彩对齐\"],\"use_intent\":\"表达氛围\",\"semantic_summary\":\"...\",\"raw_caption\":\"...\",\"interpretation_options\":[{\"option_id\":\"option_scene\",\"label\":\"从场景氛围解读\",\"perspective\":\"scene\",\"recommended_mode\":\"scene\",\"recommended\":true,\"explanation\":\"...\",\"alignment_axes\":[\"色彩对齐\",\"花语对齐\"],\"semantic_result\":{\"mode\":\"scene\",\"subject_tags\":[\"...\"],\"scene_tags\":[\"...\"],\"emotion_tags\":[\"...\"],\"visual_tags\":[\"...\"],\"color_palette\":[\"...\"],\"relation_tags\":[\"...\"],\"translation_axes\":[\"色彩对齐\"],\"use_intent\":\"表达氛围\",\"semantic_summary\":\"...\"}}]}",
+  "latency_ms": 29501,
+  "raw_model_content": "{\n  \"mode\": \"scene\",\n  \"confidence\": 0.87,\n  \"evidence\": [\n    \"玻璃上的雨滴形成近景质感\",\n    \"背景灯光模糊成暖色光斑\",\n    \"整体氛围安静且轻治愈\",\n    \"视觉焦点在窗边雨幕\"\n  ],\n  \"detected_elements\": [\n    {\n      \"element_type\": \"scene\",\n      \"confidence\": 0.92,\n      \"reason\": \"画面主体为雨夜窗景，雨滴覆盖玻璃，远处灯光虚化，构成典型雨天室内场景\"\n    }\n  ],\n  \"needs_user_choice\": false,\n  \"planner_summary\": \"图像核心是雨夜窗景的静谧氛围，结合用户意图‘送朋友’与‘轻治愈感’，优先保留以情绪和场景转译为核心的解读。虽有送礼意图，但视觉主导仍为环境氛围，故主模式定为 scene，仅需一个综合解读即可满足花艺转译需求。\",\n  \"recommended_interpretation_id\": \"option_scene\",\n  \"subject_tags\": [\"窗边\", \"雨夜\"],\n  \"scene_tags\": [\"窗边\", \"雨天\", \"室内\"],\n  \"emotion_tags\": [\"安抚\", \"内向\", \"轻治愈\"],\n  \"visual_tags\": [\"玻璃雨滴\", \"模糊背景\", \"暖灯\", \"近景质感\"],\n  \"color_palette\": [\"深蓝\", \"暖黄\", \"白\", \"浅橙\"],\n  \"relation_tags\": [\"朋友\"],\n  \"translation_axes\": [\"色彩对齐\", \"气质对齐\", \"材质对齐\"],\n  \"use_intent\": \"gift\",\n  \"semantic_summary\": \"透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。\",\n  \"raw_caption\": \"雨夜中透过布满水珠的玻璃窗，看到模糊的城市灯光，呈现出温暖而宁静的氛围。\",\n  \"interpretation_options\": [\n    {\n      \"option_id\": \"option_scene\",\n      \"label\": \"从场景氛围解读\",\n      \"perspective\": \"scene\",\n      \"recommended_mode\": \"scene\",\n      \"recommended\": true,\n      \"explanation\": \"画面以雨夜窗景为核心，通过雨滴的质感与灯光的虚化营造出安静、轻治愈的氛围。花艺可模仿这种‘隔着一层朦胧’的视觉感受，使用透明或半透明材质（如玻璃瓶、薄纱）搭配暖色系花朵（如橙色郁金香、黄色洋桔梗），体现‘被雨水包裹的温柔’。\",\n      \"alignment_axes\": [\n        \"色彩对齐\",\n        \"气质对齐\",\n        \"材质对齐\"\n      ],\n      \"semantic_result\": {\n        \"mode\": \"scene\",\n        \"subject_tags\": [\"窗边\", \"雨夜\"],\n        \"scene_tags\": [\"窗边\", \"雨天\", \"室内\"],\n        \"emotion_tags\": [\"安抚\", \"内向\", \"轻治愈\"],\n        \"visual_tags\": [\"玻璃雨滴\", \"模糊背景\", \"暖灯\", \"近景质感\"],\n        \"color_palette\": [\"深蓝\", \"暖黄\", \"白\", \"浅橙\"],\n        \"relation_tags\": [\"朋友\"],\n        \"translation_axes\": [\"色彩对齐\", \"气质对齐\", \"材质对齐\"],\n        \"use_intent\": \"gift\",\n        \"semantic_summary\": \"透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。\"\n      }\n    }\n  ]\n}",
+  "parsed_model_json": {
+    "mode": "scene",
+    "confidence": 0.87,
+    "evidence": [
+      "玻璃上的雨滴形成近景质感",
+      "背景灯光模糊成暖色光斑",
+      "整体氛围安静且轻治愈",
+      "视觉焦点在窗边雨幕"
+    ],
+    "detected_elements": [
+      {
+        "element_type": "scene",
+        "confidence": 0.92,
+        "reason": "画面主体为雨夜窗景，雨滴覆盖玻璃，远处灯光虚化，构成典型雨天室内场景"
+      }
+    ],
+    "needs_user_choice": false,
+    "planner_summary": "图像核心是雨夜窗景的静谧氛围，结合用户意图‘送朋友’与‘轻治愈感’，优先保留以情绪和场景转译为核心的解读。虽有送礼意图，但视觉主导仍为环境氛围，故主模式定为 scene，仅需一个综合解读即可满足花艺转译需求。",
+    "recommended_interpretation_id": "option_scene",
+    "subject_tags": [
+      "窗边",
+      "雨夜"
+    ],
+    "scene_tags": [
+      "窗边",
+      "雨天",
+      "室内"
+    ],
+    "emotion_tags": [
+      "安抚",
+      "内向",
+      "轻治愈"
+    ],
+    "visual_tags": [
+      "玻璃雨滴",
+      "模糊背景",
+      "暖灯",
+      "近景质感"
+    ],
+    "color_palette": [
+      "深蓝",
+      "暖黄",
+      "白",
+      "浅橙"
+    ],
+    "relation_tags": [
+      "朋友"
+    ],
+    "translation_axes": [
+      "色彩对齐",
+      "气质对齐",
+      "材质对齐"
+    ],
+    "use_intent": "gift",
+    "semantic_summary": "透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。",
+    "raw_caption": "雨夜中透过布满水珠的玻璃窗，看到模糊的城市灯光，呈现出温暖而宁静的氛围。",
+    "interpretation_options": [
+      {
+        "option_id": "option_scene",
+        "label": "从场景氛围解读",
+        "perspective": "scene",
+        "recommended_mode": "scene",
+        "recommended": true,
+        "explanation": "画面以雨夜窗景为核心，通过雨滴的质感与灯光的虚化营造出安静、轻治愈的氛围。花艺可模仿这种‘隔着一层朦胧’的视觉感受，使用透明或半透明材质（如玻璃瓶、薄纱）搭配暖色系花朵（如橙色郁金香、黄色洋桔梗），体现‘被雨水包裹的温柔’。",
+        "alignment_axes": [
+          "色彩对齐",
+          "气质对齐",
+          "材质对齐"
+        ],
+        "semantic_result": {
+          "mode": "scene",
+          "subject_tags": [
+            "窗边",
+            "雨夜"
+          ],
+          "scene_tags": [
+            "窗边",
+            "雨天",
+            "室内"
+          ],
+          "emotion_tags": [
+            "安抚",
+            "内向",
+            "轻治愈"
+          ],
+          "visual_tags": [
+            "玻璃雨滴",
+            "模糊背景",
+            "暖灯",
+            "近景质感"
+          ],
+          "color_palette": [
+            "深蓝",
+            "暖黄",
+            "白",
+            "浅橙"
+          ],
+          "relation_tags": [
+            "朋友"
+          ],
+          "translation_axes": [
+            "色彩对齐",
+            "气质对齐",
+            "材质对齐"
+          ],
+          "use_intent": "gift",
+          "semantic_summary": "透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。"
+        }
+      }
+    ]
+  },
+  "normalized_from_same_call": {
+    "mode_result": {
+      "detected_mode": "scene",
+      "confidence": 0.87,
+      "evidence": [
+        "玻璃上的雨滴形成近景质感",
+        "背景灯光模糊成暖色光斑",
+        "整体氛围安静且轻治愈",
+        "视觉焦点在窗边雨幕"
+      ]
+    },
+    "semantic_result": {
+      "mode": "scene",
+      "subject_tags": [
+        "窗边",
+        "雨夜"
+      ],
+      "scene_tags": [
+        "窗边",
+        "雨天",
+        "室内"
+      ],
+      "emotion_tags": [
+        "安抚",
+        "内向",
+        "轻治愈"
+      ],
+      "visual_tags": [
+        "玻璃雨滴",
+        "模糊背景",
+        "暖灯",
+        "近景质感"
+      ],
+      "color_palette": [
+        "深蓝",
+        "暖黄",
+        "白",
+        "浅橙"
+      ],
+      "relation_tags": [
+        "朋友"
+      ],
+      "use_intent": "gift",
+      "semantic_summary": "透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。",
+      "translation_axes": [
+        "色彩对齐",
+        "气质对齐",
+        "材质对齐"
+      ]
+    },
+    "detected_elements": [
+      {
+        "element_type": "scene",
+        "confidence": 0.92,
+        "reason": "画面主体为雨夜窗景，雨滴覆盖玻璃，远处灯光虚化，构成典型雨天室内场景"
+      }
+    ],
+    "needs_user_choice": false,
+    "interpretation_options": [
+      {
+        "option_id": "option_scene",
+        "label": "从场景氛围解读",
+        "perspective": "scene",
+        "recommended_mode": "scene",
+        "semantic_result": {
+          "mode": "scene",
+          "subject_tags": [
+            "窗边",
+            "雨夜"
+          ],
+          "scene_tags": [
+            "窗边",
+            "雨天",
+            "室内"
+          ],
+          "emotion_tags": [
+            "安抚",
+            "内向",
+            "轻治愈"
+          ],
+          "visual_tags": [
+            "玻璃雨滴",
+            "模糊背景",
+            "暖灯",
+            "近景质感"
+          ],
+          "color_palette": [
+            "深蓝",
+            "暖黄",
+            "白",
+            "浅橙"
+          ],
+          "relation_tags": [
+            "朋友"
+          ],
+          "use_intent": "gift",
+          "semantic_summary": "透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。",
+          "translation_axes": [
+            "色彩对齐",
+            "气质对齐",
+            "材质对齐"
+          ]
+        },
+        "explanation": "画面以雨夜窗景为核心，通过雨滴的质感与灯光的虚化营造出安静、轻治愈的氛围。花艺可模仿这种‘隔着一层朦胧’的视觉感受，使用透明或半透明材质（如玻璃瓶、薄纱）搭配暖色系花朵（如橙色郁金香、黄色洋桔梗），体现‘被雨水包裹的温柔’。",
+        "alignment_axes": [
+          "色彩对齐",
+          "气质对齐",
+          "材质对齐"
+        ],
+        "recommended": true
+      }
+    ],
+    "planner_summary": "图像核心是雨夜窗景的静谧氛围，结合用户意图‘送朋友’与‘轻治愈感’，优先保留以情绪和场景转译为核心的解读。虽有送礼意图，但视觉主导仍为环境氛围，故主模式定为 scene，仅需一个综合解读即可满足花艺转译需求。",
+    "recommended_interpretation_id": "option_scene"
+  }
+}

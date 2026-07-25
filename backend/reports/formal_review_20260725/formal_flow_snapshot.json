@@ -1,0 +1,231 @@
+{
+  "input_image": "/library/assets/scene_window_rain_01.png",
+  "analyze": {
+    "request_id": "req_40c36c64",
+    "mode_result": {
+      "detected_mode": "scene",
+      "confidence": 0.85,
+      "evidence": [
+        "雨滴覆盖的玻璃表面",
+        "模糊的暖色调灯光",
+        "深色背景中的光斑"
+      ]
+    },
+    "semantic_result": {
+      "mode": "scene",
+      "subject_tags": [
+        "雨夜窗景",
+        "城市灯火"
+      ],
+      "scene_tags": [
+        "窗边",
+        "雨天",
+        "室内"
+      ],
+      "emotion_tags": [
+        "安抚",
+        "内向",
+        "轻治愈"
+      ],
+      "visual_tags": [
+        "玻璃雨滴",
+        "模糊背景",
+        "暖灯",
+        "近景质感"
+      ],
+      "color_palette": [
+        "深蓝",
+        "金黄",
+        "白色",
+        "橙红"
+      ],
+      "relation_tags": [],
+      "use_intent": "表达氛围",
+      "semantic_summary": "透过布满雨滴的玻璃，看到朦胧而温暖的城市灯光，营造出静谧、轻柔治愈的夜晚氛围。"
+    },
+    "normalized_input": {
+      "content_id": "scene_window_rain",
+      "image_url": "/library/assets/scene_window_rain_01.png",
+      "selection_box": {
+        "x": 12,
+        "y": 16,
+        "width": 180,
+        "height": 140
+      },
+      "voice_text": "想把这个画面的安静和轻治愈感，变成一束可以送朋友的花。"
+    }
+  },
+  "reference": {
+    "references": [
+      {
+        "reference_id": "flower_blue_white",
+        "title": "蓝白克制花束",
+        "source_type": "image",
+        "cover_url": "/library/assets/flower_blue_white_01.png",
+        "mode": "flower",
+        "flower_types": [
+          "白玫瑰",
+          "蓝绣球",
+          "白色兰感配花",
+          "蓝星花"
+        ],
+        "visual_tags": [
+          "蓝白",
+          "清透",
+          "留白",
+          "高级感"
+        ],
+        "emotion_tags": [
+          "克制",
+          "治愈",
+          "冷静"
+        ],
+        "scene_tags": [
+          "探望",
+          "祝福",
+          "正式送礼"
+        ],
+        "reference_options": [
+          "color",
+          "structure",
+          "flower_types",
+          "wrapping"
+        ],
+        "reason": "模式契合、情绪贴近、真实素材优先，命中标签：安抚 / 轻治愈",
+        "score": 68,
+        "matched_tags": [
+          "安抚",
+          "轻治愈"
+        ],
+        "score_breakdown": {
+          "mode": 38,
+          "source": 8,
+          "intent": 0,
+          "subject": 0,
+          "scene": 0,
+          "emotion": 22,
+          "visual": 0,
+          "relation": 0
+        }
+      }
+    ]
+  },
+  "generate": {
+    "results": [
+      {
+        "result_id": "scene_bouquet_v1_9360b40e",
+        "title": "雨后安静",
+        "image_url": "https://dashscope-7c2c.oss-accelerate.aliyuncs.com/1d/1b/20260725/edd52a7a/f67b43ec-5759-418c-9853-c1f2906c30b0_0.png?Expires=1785071752&OSSAccessKeyId=LTAI5tPxpiCM2hjmWrFXrym1&Signature=UVcAfW8nTLYwOJNxvfUyO%2Figx7c%3D",
+        "tags": [
+          "克制",
+          "治愈",
+          "适合收藏"
+        ],
+        "summary": "保留了冷色和留白感，让花束像雨停后的空气一样轻，轻参考了真实花内容“蓝白克制花束”，并保持了“透过布满雨滴的玻璃，看到朦胧而温暖的城市灯光，营造出静谧、轻柔治愈的夜晚氛围。”中的核心感觉。，正式生图已完成。",
+        "reference_used": [
+          {
+            "reference_id": "flower_blue_white",
+            "strength": "light",
+            "title": "蓝白克制花束",
+            "cover_url": "/library/assets/flower_blue_white_01.png",
+            "reason": null,
+            "matched_tags": [],
+            "score": null
+          }
+        ],
+        "flowers": [
+          {
+            "flower_id": "f_scene_01",
+            "name": "白洋桔梗",
+            "type": "主花",
+            "meaning": "温柔、克制",
+            "role": "负责留白与整体安静感"
+          },
+          {
+            "flower_id": "f_scene_02",
+            "name": "蓝绣球",
+            "type": "结构花",
+            "meaning": "包裹感与层次",
+            "role": "提供冷色主体与空间感"
+          }
+        ]
+      },
+      {
+        "result_id": "scene_bouquet_v2_fcf675c0",
+        "title": "窗边留白",
+        "image_url": "https://dashscope-7c2c.oss-accelerate.aliyuncs.com/1d/8e/20260725/edd52a7a/4fbb5cc5-677e-4e97-8ab5-7dd5349f6f4f_0.png?Expires=1785071752&OSSAccessKeyId=LTAI5tPxpiCM2hjmWrFXrym1&Signature=jfcC7LljeZgC5DYnI2JnK%2BlNLtQ%3D",
+        "tags": [
+          "空气感",
+          "轻盈",
+          "冷色"
+        ],
+        "summary": "更强调空间感与轻留白，像把窗边光线折进花里，轻参考了真实花内容“蓝白克制花束”，并保持了“透过布满雨滴的玻璃，看到朦胧而温暖的城市灯光，营造出静谧、轻柔治愈的夜晚氛围。”中的核心感觉。，正式生图已完成。",
+        "reference_used": [
+          {
+            "reference_id": "flower_blue_white",
+            "strength": "light",
+            "title": "蓝白克制花束",
+            "cover_url": "/library/assets/flower_blue_white_01.png",
+            "reason": null,
+            "matched_tags": [],
+            "score": null
+          }
+        ],
+        "flowers": [
+          {
+            "flower_id": "f_scene_03",
+            "name": "白郁金香",
+            "type": "主花",
+            "meaning": "安静而有呼吸感",
+            "role": "承接轻盈与利落的主轮廓"
+          },
+          {
+            "flower_id": "f_scene_04",
+            "name": "银叶菊",
+            "type": "配叶",
+            "meaning": "冷静、柔化边界",
+            "role": "把画面冷感柔和地串起来"
+          }
+        ]
+      },
+      {
+        "result_id": "scene_bouquet_v3_a32e2263",
+        "title": "雾色桌花",
+        "image_url": "https://dashscope-7c2c.oss-accelerate.aliyuncs.com/1d/51/20260725/edd52a7a/b219a4d5-c142-4289-be19-bbdc03314667_0.png?Expires=1785071752&OSSAccessKeyId=LTAI5tPxpiCM2hjmWrFXrym1&Signature=u3Yl8kVi1WQZ0MbtYxYr7BBE%2FSs%3D",
+        "tags": [
+          "桌花",
+          "克制",
+          "空间装饰"
+        ],
+        "summary": "将画面的静谧感收束成更适合现实桌面的表达，轻参考了真实花内容“蓝白克制花束”，并保持了“透过布满雨滴的玻璃，看到朦胧而温暖的城市灯光，营造出静谧、轻柔治愈的夜晚氛围。”中的核心感觉。，正式生图已完成。",
+        "reference_used": [
+          {
+            "reference_id": "flower_blue_white",
+            "strength": "light",
+            "title": "蓝白克制花束",
+            "cover_url": "/library/assets/flower_blue_white_01.png",
+            "reason": null,
+            "matched_tags": [],
+            "score": null
+          }
+        ],
+        "flowers": [
+          {
+            "flower_id": "f_scene_05",
+            "name": "绿铃草",
+            "type": "线条花",
+            "meaning": "轻松、舒展",
+            "role": "延展雾气一样的线条感"
+          },
+          {
+            "flower_id": "f_scene_06",
+            "name": "白玫瑰",
+            "type": "主花",
+            "meaning": "安稳、纯净",
+            "role": "作为现实承接中的视觉锚点"
+          }
+        ]
+      }
+    ]
+  }
+}

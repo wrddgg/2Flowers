@@ -1,0 +1,117 @@
+{
+  "scene_window_rain": {
+    "mode_result": {
+      "detected_mode": "scene",
+      "confidence": 0.87,
+      "evidence": [
+        "玻璃上的雨滴形成近景质感",
+        "背景灯光模糊成暖色光斑",
+        "整体氛围安静且轻治愈",
+        "视觉焦点在窗边雨幕"
+      ]
+    },
+    "semantic_result": {
+      "mode": "scene",
+      "subject_tags": [
+        "窗边",
+        "雨夜"
+      ],
+      "scene_tags": [
+        "窗边",
+        "雨天",
+        "室内"
+      ],
+      "emotion_tags": [
+        "安抚",
+        "内向",
+        "轻治愈"
+      ],
+      "visual_tags": [
+        "玻璃雨滴",
+        "模糊背景",
+        "暖灯",
+        "近景质感"
+      ],
+      "color_palette": [
+        "深蓝",
+        "暖黄",
+        "白",
+        "浅橙"
+      ],
+      "relation_tags": [
+        "朋友"
+      ],
+      "use_intent": "gift",
+      "semantic_summary": "透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。",
+      "translation_axes": [
+        "色彩对齐",
+        "气质对齐",
+        "材质对齐"
+      ]
+    },
+    "detected_elements": [
+      {
+        "element_type": "scene",
+        "confidence": 0.92,
+        "reason": "画面主体为雨夜窗景，雨滴覆盖玻璃，远处灯光虚化，构成典型雨天室内场景"
+      }
+    ],
+    "needs_user_choice": false,
+    "interpretation_options": [
+      {
+        "option_id": "option_scene",
+        "label": "从场景氛围解读",
+        "perspective": "scene",
+        "recommended_mode": "scene",
+        "semantic_result": {
+          "mode": "scene",
+          "subject_tags": [
+            "窗边",
+            "雨夜"
+          ],
+          "scene_tags": [
+            "窗边",
+            "雨天",
+            "室内"
+          ],
+          "emotion_tags": [
+            "安抚",
+            "内向",
+            "轻治愈"
+          ],
+          "visual_tags": [
+            "玻璃雨滴",
+            "模糊背景",
+            "暖灯",
+            "近景质感"
+          ],
+          "color_palette": [
+            "深蓝",
+            "暖黄",
+            "白",
+            "浅橙"
+          ],
+          "relation_tags": [
+            "朋友"
+          ],
+          "use_intent": "gift",
+          "semantic_summary": "透过雨滴斑驳的窗，映出城市暖灯的温柔光晕，传递一种安静而轻柔的治愈感，适合转化为一束温暖、克制又富有诗意的花艺赠予朋友。",
+          "translation_axes": [
+            "色彩对齐",
+            "气质对齐",
+            "材质对齐"
+          ]
+        },
+        "explanation": "画面以雨夜窗景为核心，通过雨滴的质感与灯光的虚化营造出安静、轻治愈的氛围。花艺可模仿这种隔着一层朦胧的视觉感受，使用透明或半透明材质搭配暖色系点光感花材，体现被雨水包裹的温柔。",
+        "alignment_axes": [
+          "色彩对齐",
+          "气质对齐",
+          "材质对齐"
+        ],
+        "recommended": true
+      }
+    ],
+    "planner_summary": "图像核心是雨夜窗景的静谧氛围，结合用户意图“送朋友”与“轻治愈感”，优先保留以情绪和场景转译为核心的解读。虽有送礼意图，但视觉主导仍为环境氛围，故主模式定为 scene，仅需一个综合解读即可满足花艺转译需求。",
+    "recommended_interpretation_id": "option_scene"
+  }
+}

@@ -1,0 +1,164 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  /* 花店风主题：深墨绿 + 奶油米白 + 花粉点缀 */
+  --brand: #3d6b57;
+  --brand-deep: #2d4a3e;
+  --brand-light: #5a8a72;
+  --accent: #e8a0b0;
+  --accent-deep: #d4859a;
+  --ink: #22302a;
+  --paper: #f5f1e8;
+  --paper-warm: #efe9dc;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue',
+    'Microsoft YaHei', sans-serif;
+  color: var(--ink);
+}
+
+button {
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+img {
+  display: block;
+}
+
+/* ---------- 页面容器与转场 ---------- */
+.page-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.slide-forward-enter-active,
+.slide-forward-leave-active,
+.slide-back-enter-active,
+.slide-back-leave-active {
+  transition: transform 0.38s cubic-bezier(0.32, 0.72, 0.24, 1), opacity 0.38s ease;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+}
+.slide-forward-enter-from {
+  transform: translateX(100%);
+}
+.slide-forward-leave-to {
+  transform: translateX(-24%);
+  opacity: 0.7;
+}
+.slide-back-enter-from {
+  transform: translateX(-24%);
+  opacity: 0.7;
+}
+.slide-back-leave-to {
+  transform: translateX(100%);
+}
+.slide-enter-to,
+.slide-leave-from {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+/* ---------- 通用组件 ---------- */
+.capsule-close {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: 14px;
+  z-index: 50;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+/* 浅色页面用的退出按钮 */
+.capsule-close.light {
+  background: rgba(45, 74, 62, 0.08);
+  border-color: transparent;
+  backdrop-filter: none;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 15px 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-deep) 100%);
+  color: #f5f1e8;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  box-shadow: 0 8px 20px rgba(45, 74, 62, 0.35);
+}
+.primary-btn:active {
+  transform: scale(0.97);
+}
+.primary-btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: spin 0.9s linear infinite;
+}
+.spinner.dark {
+  border-color: rgba(45, 74, 62, 0.15);
+  border-top-color: var(--brand-deep);
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fadeUp 0.5s ease both;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}

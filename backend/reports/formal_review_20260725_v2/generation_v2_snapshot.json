@@ -1,0 +1,81 @@
+{
+  "saved": [
+    {
+      "file": "generated_v2_1.png",
+      "url": "https://dashscope-7c2c.oss-accelerate.aliyuncs.com/1d/d2/20260725/3a46c997/34733365-ae94-47cb-9d36-4af5ec9fe80c_0.png?Expires=1785073365&OSSAccessKeyId=LTAI5tPxpiCM2hjmWrFXrym1&Signature=F9adTHB%2BZyGc6dq0iaYcpElZ5gQ%3D",
+      "summary": "保留了冷色和留白感，让花束像雨停后的空气一样轻，轻参考了真实花内容“蓝白克制花束”，并保持了“把雨夜窗边偏黄白与蓝灰交错的昏暗、朦胧、安静感，转成一束适合送朋友的花。”中的核心感觉。，正式生图已完成。"
+    },
+    {
+      "file": "generated_v2_2.png",
+      "url": "https://dashscope-7c2c.oss-accelerate.aliyuncs.com/1d/38/20260725/3a46c997/2e17380d-f8d5-4494-84c5-b4c473ff9ec0_0.png?Expires=1785073381&OSSAccessKeyId=LTAI5tPxpiCM2hjmWrFXrym1&Signature=1laYYub7KldxFI2I5TESKK0krN0%3D",
+      "summary": "更强调空间感与轻留白，像把窗边光线折进花里，轻参考了真实花内容“蓝白克制花束”，并保持了“把雨夜窗边偏黄白与蓝灰交错的昏暗、朦胧、安静感，转成一束适合送朋友的花。”中的核心感觉。，正式生图已完成。"
+    },
+    {
+      "file": "generated_v2_3.png",
+      "url": "https://dashscope-7c2c.oss-accelerate.aliyuncs.com/1d/0d/20260725/3a46c997/d5de8219-5d70-4447-8984-0bdb8a8b90ce_0.png?Expires=1785073401&OSSAccessKeyId=LTAI5tPxpiCM2hjmWrFXrym1&Signature=Em5%2BQTJGSHQqQJhx3yGvFMje0Ug%3D",
+      "summary": "将画面的静谧感收束成更适合现实桌面的表达，轻参考了真实花内容“蓝白克制花束”，并保持了“把雨夜窗边偏黄白与蓝灰交错的昏暗、朦胧、安静感，转成一束适合送朋友的花。”中的核心感觉。，正式生图已完成。"
+    }
+  ],
+  "analysis": {
+    "generated_v2_1.png": {
+      "mode": "flower",
+      "summary": "一束以白玫瑰和浅蓝绣球为主的清新花束，传递出宁静、克制而温柔的治愈感。",
+      "visual_tags": [
+        "蓝白",
+        "包装感",
+        "柔光",
+        "留白"
+      ],
+      "emotion_tags": [
+        "轻治愈",
+        "克制",
+        "安抚"
+      ],
+      "color_palette": [
+        "浅蓝",
+        "白色",
+        "淡绿"
+      ]
+    },
+    "generated_v2_2.png": {
+      "mode": "flower",
+      "summary": "一束以蓝白为主色调的精致花束，传递出宁静、温柔且克制的治愈感。",
+      "visual_tags": [
+        "蓝白",
+        "包装感",
+        "柔光",
+        "留白"
+      ],
+      "emotion_tags": [
+        "轻治愈",
+        "克制",
+        "安抚"
+      ],
+      "color_palette": [
+        "浅蓝",
+        "白色",
+        "淡蓝"
+      ]
+    },
+    "generated_v2_3.png": {
+      "mode": "flower",
+      "summary": "一束以蓝白为主色调的精致花束，传递出宁静、温柔与克制的美感。",
+      "visual_tags": [
+        "蓝白",
+        "留白",
+        "包装感",
+        "柔光"
+      ],
+      "emotion_tags": [
+        "轻治愈",
+        "克制",
+        "安抚"
+      ],
+      "color_palette": [
+        "浅蓝",
+        "白色",
+        "淡绿"
+      ]
+    }
+  }
+}
