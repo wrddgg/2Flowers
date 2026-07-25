@@ -448,6 +448,10 @@ class ApiImageGenerationProvider:
         request: ImageGenerationApiRequest,
         variant: GenerationVariantPlan,
     ) -> ImageGenerationApiResponse:
+        engine = os.getenv("IMAGE_GENERATION_ENGINE", "dashscope").lower()
+        if engine == "doubao":
+            return self._call_doubao_generation_api(request=request, variant=variant)
+
         base_url = os.getenv("IMAGE_GENERATION_API_URL") or os.getenv("DASHSCOPE_BASE_URL")
         api_key = os.getenv("IMAGE_GENERATION_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
         model = os.getenv("IMAGE_GENERATION_MODEL") or os.getenv("WAN_IMAGE_MODEL") or "wan2.7-image"
@@ -499,6 +503,107 @@ class ApiImageGenerationProvider:
             images=images,
             latency_ms=latency_ms,
         )
+
+    def _call_doubao_generation_api(
+        self,
+        request: ImageGenerationApiRequest,
+        variant: GenerationVariantPlan,
+    ) -> ImageGenerationApiResponse:
+        """火山引擎方舟（ARK）images/generations 同步生图。
+
+        配置项：
+          DOUBAO_BASE_URL  默认 https://ark.cn-beijing.volces.com/api/v3
+          DOUBAO_API_KEY   方舟 API Key（也可回落 ARK_API_KEY / IMAGE_GENERATION_API_KEY / DASHSCOPE_API_KEY）
+          DOUBAO_IMAGE_MODEL 默认 doubao-seedream-5.0-lite
+        """
+        base_url = (
+            os.getenv("DOUBAO_BASE_URL")
+            or "https://ark.cn-beijing.volces.com/api/v3"
+        )
+        api_key = (
+            os.getenv("DOUBAO_API_KEY")
+            or os.getenv("ARK_API_KEY")
+            or os.getenv("IMAGE_GENERATION_API_KEY")
+            or os.getenv("DASHSCOPE_API_KEY")
+        )
+        model = os.getenv("DOUBAO_IMAGE_MODEL") or "doubao-seedream-5.0-lite"
+        if not api_key:
+            raise RuntimeError("未配置火山方舟生图的 API KEY（DOUBAO_API_KEY）。")
+
+        endpoint = f"{base_url.rstrip('/')}/images/generations"
+        prompt = self._build_generation_prompt(request, variant)
+        size = self._map_doubao_size(request.generation_constraints.aspect_ratio)
+        payload: dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "response_format": "url",
+            "watermark": False,
+        }
+        if size:
+            payload["size"] = size
+
+        started_at = time.perf_counter()
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                response = client.post(
+                    endpoint,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"火山方舟生图失败：{exc}") from exc
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        data = response.json()
+        images = self._extract_doubao_images(data)
+        if not images:
+            raise RuntimeError(f"火山方舟生图未返回图片：{data}")
+        return ImageGenerationApiResponse(
+            request_id=str(data.get("id") or new_id("doubao")),
+            provider_name="doubao",
+            model_name=model,
+            images=images,
+            latency_ms=latency_ms,
+        )
+
+    def _extract_doubao_images(self, data: dict[str, Any]) -> list[GeneratedBouquetImage]:
+        images: list[GeneratedBouquetImage] = []
+        for item in data.get("data", []) or []:
+            if not isinstance(item, dict):
+                continue
+            image_url = item.get("url")
+            b64 = item.get("b64_json")
+            if image_url:
+                final_url = str(image_url)
+            elif b64:
+                final_url = f"data:image/png;base64,{b64}"
+            else:
+                continue
+            images.append(
+                GeneratedBouquetImage(
+                    image_url=final_url,
+                    prompt_summary="doubao_generation",
+                    revised_prompt=str(item.get("revised_prompt") or ""),
+                    seed=None,
+                    provider_metadata={"engine": "doubao"},
+                )
+            )
+        return images
+
+    def _map_doubao_size(self, aspect_ratio: str) -> str | None:
+        # doubao-seedream-5.0-lite 要求图片至少 3686400 像素，按各比例取满足下限的尺寸
+        size_map = {
+            "1:1": "1920x1920",   # 3686400
+            "4:5": "1728x2160",   # 3732480
+            "3:4": "1664x2218",   # 3690752
+            "16:9": "2560x1440",  # 3686400
+            "9:16": "1440x2560",  # 3686400
+        }
+        return size_map.get(aspect_ratio) or "1920x1920"
 
     def _build_http_payload(
         self,
