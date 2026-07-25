@@ -30,6 +30,7 @@ class TutorialStep(BaseModel):
     image_review_score: float = 0.0
     image_review_issues: list[str] = Field(default_factory=list)
     image_retry_count: int = 0
+    image_fallback_note: str = ""
     image_display_ratio: str = "3:4"
     image_display_fit: str = "contain"
 

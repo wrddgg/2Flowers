@@ -60,9 +60,12 @@ class RemakePlan(BaseModel):
     title: str
     budget_level: Literal["premium", "balanced", "budget"]
     seasonality_note: str
+    estimated_stem_range: list[int] = Field(default_factory=lambda: [8, 12], min_length=2, max_length=2)
     preserve_points: list[str] = Field(default_factory=list)
     selected_flowers: list[str] = Field(default_factory=list)
     substitute_flowers: list[RemakeSubstitute] = Field(default_factory=list)
+    composition_note: str = ""
+    packaging_note: str = ""
     materials_note: str = ""
     preview_prompt: str = ""
 

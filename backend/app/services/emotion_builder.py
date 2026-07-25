@@ -29,6 +29,12 @@ BUDGET_FLOWER_LIMIT = {
     "budget": 2,
 }
 
+BUDGET_STEM_RANGE = {
+    "premium": [14, 20],
+    "balanced": [10, 14],
+    "budget": [6, 9],
+}
+
 SEASON_LABELS = {
     12: "冬季",
     1: "冬季",
@@ -329,29 +335,39 @@ class EmotionBuilder:
         source_flowers = self._ordered_unique([flower.name for flower in result.flowers if flower.name])
         selected_flowers, substitutes = self._resolve_selected_flowers(
             source_flowers=source_flowers,
+            option_type=option.option_type,
             budget_level=budget_level,
             season_month=season_month,
         )
         preserve_points = self._build_preserve_points(result, option, budget_level)
         seasonality_note = self._build_seasonality_note(season_month, substitutes)
+        estimated_stem_range = self._build_estimated_stem_range(option.option_type, budget_level)
+        composition_note = self._build_composition_note(result, option.option_type, budget_level)
+        packaging_note = self._build_packaging_note(result, option.option_type, budget_level)
         materials_note = self._build_materials_note(option.option_type, budget_level, selected_flowers, substitutes)
         preview_prompt = self._build_preview_prompt(
             result=result,
             option=option,
             budget_level=budget_level,
             season_month=season_month,
+            estimated_stem_range=estimated_stem_range,
             selected_flowers=selected_flowers,
             substitutes=substitutes,
             preserve_points=preserve_points,
+            composition_note=composition_note,
+            packaging_note=packaging_note,
             materials_note=materials_note,
         )
         return RemakePlan(
             title=f"{option.title}·{BUDGET_LABELS[budget_level]}",
             budget_level=budget_level,
             seasonality_note=seasonality_note,
+            estimated_stem_range=estimated_stem_range,
             preserve_points=preserve_points,
             selected_flowers=selected_flowers,
             substitute_flowers=substitutes,
+            composition_note=composition_note,
+            packaging_note=packaging_note,
             materials_note=materials_note,
             preview_prompt=preview_prompt,
         )
@@ -360,6 +376,7 @@ class EmotionBuilder:
         self,
         *,
         source_flowers: list[str],
+        option_type: str,
         budget_level: str,
         season_month: int | None,
     ) -> tuple[list[str], list[RemakeSubstitute]]:
@@ -367,6 +384,8 @@ class EmotionBuilder:
             source_flowers = ["玫瑰", "洋桔梗", "尤加利"]
 
         limit = BUDGET_FLOWER_LIMIT[budget_level]
+        if option_type == "light_table":
+            limit = min(limit, 2 if budget_level == "budget" else 3)
         selected: list[str] = []
         substitutes: list[RemakeSubstitute] = []
         seen_replacements: set[str] = set()
@@ -469,6 +488,33 @@ class EmotionBuilder:
             base += f" 已处理的关键替代包括：{preview}。"
         return base
 
+    def _build_estimated_stem_range(self, option_type: str, budget_level: str) -> list[int]:
+        base_range = list(BUDGET_STEM_RANGE[budget_level])
+        if option_type == "light_table":
+            return [max(4, base_range[0] - 2), max(6, base_range[1] - 3)]
+        return base_range
+
+    def _build_composition_note(self, result: BouquetResult, option_type: str, budget_level: str) -> str:
+        if option_type == "same_feeling":
+            return "维持原卡片花束的主视觉重心与前后层次，只把细节收束到更像现实花店可交付的结构。"
+        if option_type == "budget_friendly":
+            return "保留主花色块和第一眼记忆点，减少外围材料与复杂线条，让结构更简洁耐看。"
+        if budget_level == "budget":
+            return "优先做低重心、短束或小桌花结构，用更少材料维持正面观感。"
+        return "整体压缩成更适合日常摆放的轻量结构，正面观感清晰，轮廓干净。"
+
+    def _build_packaging_note(self, result: BouquetResult, option_type: str, budget_level: str) -> str:
+        style = result.style_preset or ""
+        if option_type == "light_table":
+            return "包装尽量简化，可弱化外包装存在感，优先像花店短束或桌花样片。"
+        if budget_level == "budget":
+            return "建议使用单层韩素纸或牛皮纸等常见包装，不做大面积复杂褶边。"
+        if style == "东方留白":
+            return "包装保持克制留白，避免厚重多层纸张抢走花面。"
+        if style == "法式浪漫":
+            return "包装可略有柔和褶皱，但不能过分蓬松或婚礼化。"
+        return "包装以常见花店材料为主，弱化复杂装饰，突出花面本身。"
+
     def _build_preview_prompt(
         self,
         *,
@@ -476,18 +522,26 @@ class EmotionBuilder:
         option: OwnOption,
         budget_level: str,
         season_month: int | None,
+        estimated_stem_range: list[int],
         selected_flowers: list[str],
         substitutes: list[RemakeSubstitute],
         preserve_points: list[str],
+        composition_note: str,
+        packaging_note: str,
         materials_note: str,
     ) -> str:
         lines = [
+            "角色：你是高端花店的花艺总监兼接单花艺师，需要把卡片花束转成现实可制作的定制预览图。",
             "请生成一张用于给花店沟通定制的现实花束预览图。",
+            "目标不是艺术概念图，而是花店能照着接单和报价的现实样片。",
             "必须是可落地、可采购、符合日常花店制作逻辑的真实花束照片，不要插画感，不要幻想植物。",
             f"目标来源：{result.title}。原始摘要：{result.summary}",
             f"复刻方向：{option.title}。预算档位：{BUDGET_LABELS[budget_level]}。",
+            f"预计总支数控制在 {estimated_stem_range[0]}-{estimated_stem_range[1]} 支。",
             f"现实花材只使用常见且容易购买的材料：{'、'.join(selected_flowers)}。",
             f"复刻重点：{'；'.join(preserve_points)}",
+            f"构图说明：{composition_note}",
+            f"包装说明：{packaging_note}",
             f"材料说明：{materials_note}",
         ]
         if substitutes:
@@ -505,7 +559,8 @@ class EmotionBuilder:
         lines.extend(
             [
                 "构图上适度复刻原卡片花束的主次层次、色块关系和镜头情境，但不要做超现实夸张结构。",
-                "如果预算较低，可以减少花材种类和数量，用重复主花与简洁叶材维持高级感。",
+                "如果预算较低，可以减少花材种类和数量，用重复主花与简洁叶材维持高级感，不要为了显贵强行增加昂贵花材。",
+                "审美原则：像真实城市花店会出的高级定制样片，克制、好看、能报价、能复刻，不要网红滤镜感和假高级堆砌。",
                 "画面要求：单束花为主体，真实包装，花店样片质感，柔和自然光，背景干净，审美克制。",
             ]
         )

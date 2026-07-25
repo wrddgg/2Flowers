@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -9,6 +10,14 @@ from urllib.parse import urlparse
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 WORKSPACE_DIR = BACKEND_DIR.parent
 LIBRARY_ASSET_DIR = WORKSPACE_DIR / "images"
+MOCK_ASSET_DIR = BACKEND_DIR / "data" / "mock_assets"
+
+
+def upload_root() -> Path:
+    configured = Path(os.getenv("UPLOAD_DIR", "./uploads"))
+    if not configured.is_absolute():
+        configured = WORKSPACE_DIR / configured
+    return configured.resolve()
 
 
 def resolve_local_image_path(image_url: str) -> Path | None:
@@ -24,6 +33,18 @@ def resolve_local_image_path(image_url: str) -> Path | None:
         asset_name = Path(candidate).name
         asset_path = LIBRARY_ASSET_DIR / asset_name
         return asset_path if asset_path.exists() else None
+
+    if candidate.startswith("/mock/assets/"):
+        asset_name = Path(candidate).name
+        asset_path = MOCK_ASSET_DIR / asset_name
+        return asset_path if asset_path.exists() else None
+
+    if candidate.startswith("/uploads/"):
+        relative_path = candidate.removeprefix("/uploads/").strip("/")
+        if not relative_path:
+            return None
+        upload_path = upload_root() / relative_path
+        return upload_path if upload_path.exists() else None
 
     if candidate.startswith("file://"):
         file_path = Path(urlparse(candidate).path)

@@ -7,12 +7,13 @@ from app.main import app
 from app.repositories.bouquet_repository import get_bouquet_repository
 from app.repositories.content_repository import get_content_repository
 from app.repositories.user_cache_repository import get_user_cache_repository
-from app.schemas.bouquet import BouquetResult, FlowerInfo, GenerateBouquetRequest
+from app.schemas.bouquet import BouquetResult, FlowerInfo, FlowerMaterialPlan, GenerateBouquetRequest
 from app.schemas.input import AnalyzeInputRequest, SelectionBox
 from app.schemas.semantic import SemanticResult
 from app.services.image_generation_provider import (
     ApiImageGenerationProvider,
     MockImageGenerationProvider,
+    _normalize_recognized_flowers,
     get_image_generation_provider,
 )
 from app.services.image_edit_provider import ImageEditProvider
@@ -23,6 +24,8 @@ from app.services.semantic_recognizer import (
     get_semantic_recognizer,
 )
 from app.services.workflow_service import _normalize_tutorial_review_result
+from app.services.workflow_service import _build_tutorial_image_fallback_note, _build_tutorial_step_image_prompt, _infer_tutorial_step_stage
+from app.utils.image_assets import resolve_local_image_path
 
 
 client = TestClient(app)
@@ -123,6 +126,8 @@ def test_full_demo_flow() -> None:
     assert results[0]["planned_flowers"][0]["category"] == "main"
     assert results[0]["recognized_flowers"][0]["category"]
     assert results[0]["recognized_flowers"][0]["detection_origin"] in {"recognized", "planned_fallback"}
+    assert results[0]["flower_recognition_status"] in {"recognized", "planned_fallback"}
+    assert results[0]["flower_recognition_summary"]
     assert results[0]["flowers"][0]["point"]
     assert results[0]["flowers"][0]["placement_zone"]
     assert results[0]["flowers"][0]["label_side"]
@@ -216,6 +221,7 @@ def test_flower_mode_analysis_and_strong_reference_generation() -> None:
     assert results[0]["planned_flowers"]
     assert 4 <= sum(len(item["species"]) for item in results[0]["planned_flowers"]) <= 6
     assert results[0]["flowers"][0]["point"]
+    assert results[0]["flower_recognition_summary"]
     assert results[0]["flowers"][0]["placement_zone"]
     assert results[0]["flowers"][0]["category_label"]
     assert results[0]["flowers"][0]["visible_reason"]
@@ -453,8 +459,11 @@ def test_emotion_remake_preview_returns_plan_and_fallback_image() -> None:
     assert data["budget_level"] in {"premium", "balanced"}
     assert data["generation_brief"]
     assert data["plan"]["title"].startswith("同感觉现货版")
+    assert data["plan"]["estimated_stem_range"][0] >= 10
     assert data["plan"]["selected_flowers"]
     assert data["plan"]["preserve_points"]
+    assert data["plan"]["composition_note"]
+    assert data["plan"]["packaging_note"]
     assert "现实花束预览图" in data["plan"]["preview_prompt"]
     assert "7 月" in data["plan"]["seasonality_note"]
 
@@ -495,11 +504,13 @@ def test_emotion_remake_preview_applies_budget_and_season_substitutions() -> Non
     assert data["budget_level"] == "budget"
     assert data["preview_status"] == "fallback"
     assert data["plan"]["selected_flowers"] == ["花园玫瑰", "洋桔梗"]
+    assert data["plan"]["estimated_stem_range"] == [6, 9]
     assert len(data["plan"]["substitute_flowers"]) >= 2
     assert data["plan"]["substitute_flowers"][0]["source_flower"] == "芍药"
     assert "11 月" in data["plan"]["seasonality_note"]
     assert "减少花材种类与总支数" in "".join(data["plan"]["preserve_points"])
     assert "已处理的关键替代包括" in data["plan"]["materials_note"]
+    assert "常见包装" in data["plan"]["packaging_note"] or "韩素纸" in data["plan"]["packaging_note"]
 
 
 def test_user_cache_progress_can_be_saved_and_restored() -> None:
@@ -618,6 +629,48 @@ def test_user_cache_can_save_and_list_saved_bouquet_records() -> None:
     assert len(records) == 1
     assert records[0]["title"] == result["title"]
     assert records[0]["scene_reason"] == "保留了夜色和克制感"
+
+
+def test_recognized_flower_names_are_constrained_to_current_plan() -> None:
+    normalized = _normalize_recognized_flowers(
+        payload={
+            "anchors": [
+                {
+                    "category": "main",
+                    "name": "玫瑰",
+                    "point": [0.52, 0.31],
+                    "confidence": 0.91,
+                    "visible_reason": "主视觉区域可见典型玫瑰花头",
+                },
+                {
+                    "category": "transition",
+                    "name": "洋桔梗",
+                    "point": [0.38, 0.46],
+                    "confidence": 0.84,
+                    "visible_reason": "第二层有明显洋桔梗轮廓",
+                },
+                {
+                    "category": "accent",
+                    "name": "向日葵",
+                    "point": [0.64, 0.52],
+                    "confidence": 0.65,
+                    "visible_reason": "这里像是一个黄色点缀花",
+                },
+            ]
+        },
+        result_id="recognition_case",
+        plan=None,
+        planned_flowers=[
+            FlowerMaterialPlan(category="main", category_label="主花材", species=["奶油玫瑰"], stem_count_range=[2, 4]),
+            FlowerMaterialPlan(category="transition", category_label="过渡花材", species=["白洋桔梗"], stem_count_range=[2, 4]),
+            FlowerMaterialPlan(category="accent", category_label="点缀花材", species=["蕾丝花"], stem_count_range=[1, 3]),
+        ],
+        fallback_flowers=[],
+    )
+
+    assert [flower.name for flower in normalized] == ["奶油玫瑰", "白洋桔梗"]
+    assert all(flower.detection_origin == "recognized" for flower in normalized)
+    assert "按当前方案收敛" in normalized[0].visible_reason
 
 
 def test_not_found_paths_are_stable() -> None:
@@ -785,6 +838,23 @@ def test_input_analyze_supports_generic_data_url_fallback() -> None:
     assert data["semantic_result"]["emotion_tags"]
 
 
+def test_resolve_local_image_path_supports_uploads_and_library_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    upload_dir = tmp_path / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_file = upload_dir / "tutorial" / "demo.png"
+    upload_file.parent.mkdir(parents=True, exist_ok=True)
+    upload_file.write_bytes(b"demo")
+
+    monkeypatch.setenv("UPLOAD_DIR", str(upload_dir))
+
+    resolved_upload = resolve_local_image_path("/uploads/tutorial/demo.png")
+    resolved_library = resolve_local_image_path("/library/assets/scene_window_rain_01.png")
+
+    assert resolved_upload == upload_file.resolve()
+    assert resolved_library is not None
+    assert resolved_library.name == "scene_window_rain_01.png"
+
+
 def test_image_edit_provider_normalizes_boxes() -> None:
     provider = ImageEditProvider()
     boxes = provider.normalize_boxes([[40, 30, 10, 90], [100, 120, 160, 180]], max_boxes=2)
@@ -810,8 +880,24 @@ def test_generate_tutorial_returns_fallback_steps() -> None:
     assert all("image_review_score" in step for step in data["data"]["steps"])
     assert all("image_review_issues" in step for step in data["data"]["steps"])
     assert all("image_retry_count" in step for step in data["data"]["steps"])
+    assert all("image_fallback_note" in step for step in data["data"]["steps"])
     assert all(step["image_display_fit"] == "contain" for step in data["data"]["steps"])
     assert all(step["image_display_ratio"] == "3:4" for step in data["data"]["steps"])
+
+
+def test_generate_tutorial_reuses_library_asset_image_when_available() -> None:
+    response = client.post(
+        "/api/generate-tutorial",
+        json={
+            "bouquet_image": "/library/assets/flower_blue_white_01.png",
+            "flowers": ["白玫瑰", "尤加利叶"],
+            "with_images": False,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["steps"][0]["image_url"] == "/library/assets/flower_blue_white_01.png"
+    assert data["steps"][0]["image_status"] == "done"
 
 
 def test_tutorial_review_normalization_rejects_low_score_and_blocking_issues() -> None:
@@ -836,6 +922,36 @@ def test_tutorial_review_normalization_rejects_low_score_and_blocking_issues() -
     assert "主体被截断" in review["issues"]
     assert review["retry_prompt_hint"]
     assert review["review_text"] == "动作和构图都不合格"
+
+
+def test_tutorial_image_prompt_uses_stage_specific_guidance() -> None:
+    step = {
+        "title": "醒花与修剪",
+        "description": "先去叶并斜剪花脚，让花材充分吸水。",
+        "image_prompt": "近景展示修剪动作",
+    }
+    stage = _infer_tutorial_step_stage(step)
+    prompt = _build_tutorial_step_image_prompt(step, "白玫瑰、尤加利", "避免截断手部", stage)
+
+    assert stage == "prep"
+    assert "完整展示醒花、去叶、修剪花茎" in prompt
+    assert "不要拼图" in prompt
+    assert "额外修正要求：避免截断手部" in prompt
+
+
+def test_tutorial_image_fallback_note_prefers_stage_specific_instruction() -> None:
+    note = _build_tutorial_image_fallback_note(
+        {
+            "title": "整理收口",
+            "description": "最后统一调整花头朝向并完成包装收口。",
+        },
+        "finish",
+        ["主体截断", "绑带动作不清晰"],
+        "教程配图未通过审核",
+    )
+
+    assert "最后统一调整花头朝向和外轮廓" in note
+    assert "主体截断" in note
 
 
 def test_generate_card_returns_local_upload_url() -> None:

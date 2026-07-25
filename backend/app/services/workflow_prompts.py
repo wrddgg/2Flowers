@@ -76,6 +76,8 @@ def build_tutorial_generation_prompt(*, flowers: list[str], plan: dict[str, obje
         "3. image_prompt 用于后续配图，必须突出本步关键动作，不要写抽象情绪词。\n"
         "4. 教程要体现花艺专家的判断：少而准，不要为了显得完整而加空步骤。\n"
         "5. image_prompt 必须说明镜头视角、手部动作、花材状态、画幅完整，不要裁掉花头或花瓶，不要出现不合理肢体。\n"
+        "6. 每张步骤图只表现一个明确动作，不要做拼图、分镜、连环画，不要在一张图里塞多个步骤。\n"
+        "7. 画面必须像真实花艺教学现场，工作台、工具、花材朝向和手势都要可执行。\n"
         f"花材：{flowers_text}\n"
         f"教学规划：{json.dumps(plan, ensure_ascii=False)}\n"
         '输出 JSON：{"steps":[{"step":1,"title":"醒花与修剪","description":"...","image_prompt":"..."}]}'
