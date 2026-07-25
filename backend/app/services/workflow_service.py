@@ -36,6 +36,24 @@ TUTORIAL_TASKS: dict[str, dict] = {}
 TASK_LOCK = threading.Lock()
 TASK_TTL_SECONDS = 3600
 
+TUTORIAL_STAGE_GUIDANCE = {
+    "prep": "近景教学图，桌面整洁，完整展示醒花、去叶、修剪花茎的双手动作，花头与容器都在画面内。",
+    "framework": "半身俯拍教学图，完整展示先定骨架与高低线条的过程，手部动作自然，花束整体轮廓不能被截断。",
+    "main": "中近景教学图，聚焦插入主花形成视觉重心的动作，至少清楚看到一只手的插花动作和主花位置关系。",
+    "layering": "侧前方教学图，完整展示补入过渡花材和叶材形成层次的过程，保留前后高低关系，不要让花头挤成一团。",
+    "finish": "成品整理教学图，完整展示收口、绑带或包装整理动作，花束外轮廓、底部收束和关键手势都要自然。",
+    "general": "真实花艺教学图，完整展示当前步骤唯一关键动作，保留花束主体、手部动作和工作台逻辑。",
+}
+
+TUTORIAL_STAGE_FALLBACK_NOTES = {
+    "prep": "本步建议优先参考文字说明完成醒花、去叶和斜剪花脚，确认每支花材都能稳定吸水后再进入下一步。",
+    "framework": "本步建议先用线性花材或较高枝条定出整体高低轮廓，再检查花束是否有明确的呼吸空间。",
+    "main": "本步建议先确定主花的视觉中心，不要一次插太多主花，先定一到两个焦点再补其余花材。",
+    "layering": "本步建议从外侧与后侧慢慢补入辅花和叶材，边插边退远观察，避免把层次堆成同一平面。",
+    "finish": "本步建议最后统一调整花头朝向和外轮廓，再完成绑带或包装收口，确认正面视觉重心稳定。",
+    "general": "本步图片未通过审核，建议先按文字说明完成当前动作，再结合上一阶段成型结构检查整体是否自然。",
+}
+
 
 def generate_tutorial_payload(*, flowers: list[str], bouquet_image: str = "", with_images: bool = True) -> dict:
     if not flowers:
@@ -290,9 +308,10 @@ def _tutorial_worker(task_id: str, flowers_text: str, bouquet_image: str) -> Non
             task = TUTORIAL_TASKS.get(task_id)
             if task:
                 failed = sum(1 for item in task["steps"] if item.get("image_status") == "failed")
-                done = sum(1 for item in task["steps"] if item.get("image_status") == "done")
-                task["done"] = done
-                task["status"] = "done" if failed == 0 and done == task["total"] else "partial"
+                fallback = sum(1 for item in task["steps"] if item.get("image_status") == "fallback")
+                completed = sum(1 for item in task["steps"] if item.get("image_status") in {"done", "fallback", "skipped"})
+                task["done"] = completed
+                task["status"] = "done" if failed == 0 and fallback == 0 and completed == task["total"] else "partial"
                 task["finished_at"] = time.time()
     except Exception as exc:
         with TASK_LOCK:
@@ -310,12 +329,14 @@ def _generate_step_image(task_id: str, index: int, step: dict, flowers_text: str
     image_review_score = 0.0
     image_review_issues: list[str] = []
     image_retry_count = 0
+    image_fallback_note = ""
     try:
         max_attempts = 3
         local_path = None
+        stage = _infer_tutorial_step_stage(step)
         for attempt in range(max_attempts):
             retry_hint = image_review_issues[0] if image_review_issues else image_review
-            generation_prompt = _build_tutorial_step_image_prompt(step, flowers_text, retry_hint)
+            generation_prompt = _build_tutorial_step_image_prompt(step, flowers_text, retry_hint, stage)
             attempt_suffix = "" if attempt == 0 else f"_retry{attempt}"
             local_path = create_result_path("tutorial", f"{task_id}_step{step.get('step', index + 1)}{attempt_suffix}", ".png")
             text2image(generation_prompt, str(local_path), size="1K")
@@ -334,11 +355,15 @@ def _generate_step_image(task_id: str, index: int, step: dict, flowers_text: str
                 image_status = "done"
                 break
         if image_status != "done":
+            image_status = "fallback"
             image_review = image_review or "教程配图未通过审核"
+            image_fallback_note = _build_tutorial_image_fallback_note(step, stage, image_review_issues, image_review)
     except Exception as exc:
         image_url = ""
-        image_status = "failed"
+        stage = _infer_tutorial_step_stage(step)
+        image_status = "fallback"
         image_review = str(exc)
+        image_fallback_note = _build_tutorial_image_fallback_note(step, stage, image_review_issues, image_review)
 
     with TASK_LOCK:
         task = TUTORIAL_TASKS.get(task_id)
@@ -350,12 +375,19 @@ def _generate_step_image(task_id: str, index: int, step: dict, flowers_text: str
         task["steps"][index]["image_review_score"] = image_review_score
         task["steps"][index]["image_review_issues"] = image_review_issues
         task["steps"][index]["image_retry_count"] = image_retry_count
-        task["done"] = sum(1 for item in task["steps"] if item.get("image_status") == "done")
+        task["steps"][index]["image_fallback_note"] = image_fallback_note
+        task["done"] = sum(1 for item in task["steps"] if item.get("image_status") in {"done", "fallback", "skipped"})
 
 
 def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> list[dict]:
     main_flowers = "、".join(flowers[:2]) if flowers else "主花"
-    image_url = bouquet_image if bouquet_image.startswith("/uploads/") or bouquet_image.startswith("/mock/") else ""
+    image_url = (
+        bouquet_image
+        if bouquet_image.startswith("/uploads/")
+        or bouquet_image.startswith("/mock/assets/")
+        or bouquet_image.startswith("/library/assets/")
+        else ""
+    )
     return [
         TutorialStep(
             step=1,
@@ -365,6 +397,7 @@ def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> lis
             image_url=image_url,
             image_status="done" if image_url else "skipped",
             image_review="已复用已有花束图",
+            image_fallback_note="",
         ).model_dump(),
         TutorialStep(
             step=2,
@@ -372,6 +405,7 @@ def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> lis
             description=f"先用 {main_flowers} 搭出骨架，确定视觉重心和外轮廓。",
             image_prompt="俯拍教学图，完整展示先放主花形成视觉中心的动作，画面保留花束骨架的整体轮廓",
             image_status="skipped",
+            image_fallback_note="",
         ).model_dump(),
         TutorialStep(
             step=3,
@@ -379,6 +413,7 @@ def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> lis
             description="按照高低、疏密、前后关系补入配花和叶材，让整体更有节奏。",
             image_prompt="侧面教学图，完整展示辅花逐层填入形成层次的过程，不要裁掉主要花头与手部动作",
             image_status="skipped",
+            image_fallback_note="",
         ).model_dump(),
         TutorialStep(
             step=4,
@@ -386,6 +421,7 @@ def _fallback_tutorial_steps(flowers: list[str], bouquet_image: str = "") -> lis
             description="最后调整朝向、修整外轮廓，并完成包装与绑带。",
             image_prompt="成品教学图，完整展示整理包装与绑带的收口动作，花束外轮廓完整自然",
             image_status="skipped",
+            image_fallback_note="",
         ).model_dump(),
     ]
 
@@ -477,6 +513,7 @@ def _normalize_tutorial_steps(steps: list[dict]) -> list[dict]:
                 image_review_score=float(step.get("image_review_score") or 0.0),
                 image_review_issues=[str(item) for item in (step.get("image_review_issues") or []) if str(item).strip()],
                 image_retry_count=int(step.get("image_retry_count") or 0),
+                image_fallback_note=str(step.get("image_fallback_note") or ""),
             ).model_dump()
         )
     return normalized
@@ -522,14 +559,17 @@ def _call_workflow_multimodal_json(prompt: str, *, system_prompt: str, image_url
     )
 
 
-def _build_tutorial_step_image_prompt(step: dict, flowers_text: str, retry_hint: str = "") -> str:
+def _build_tutorial_step_image_prompt(step: dict, flowers_text: str, retry_hint: str = "", stage: str = "general") -> str:
+    stage_guidance = TUTORIAL_STAGE_GUIDANCE.get(stage, TUTORIAL_STAGE_GUIDANCE["general"])
     base_prompt = (
         f"插花教学步骤图，步骤标题：{step.get('title', '')}。"
         f" 当前动作：{step.get('image_prompt') or step.get('description', '')}。"
         f" 花材包含 {flowers_text}。"
-        " 画面为真实可执行的花艺教学场景，半写实教程插画或摄影参考风格。"
+        f" {stage_guidance}"
+        " 画面为真实可执行的花艺教学场景，偏真实摄影教学参考风格，不要拼图，不要插画分镜，不要海报排版。"
+        " 只表现当前这一步的唯一关键动作，禁止把前后多步动作混在同一张图里。"
         " 必须完整展示关键手部动作、主要花头、容器和花束轮廓，禁止截断主体。"
-        " 花材必须真实存在，结构自然，不允许错误肢体、漂浮工具、异常花型和夸张 AI 痕迹。"
+        " 花材必须真实存在，结构自然，不允许错误肢体、漂浮工具、异常花型、错误花芯、重复畸形花头和夸张 AI 痕迹。"
     )
     if retry_hint:
         return f"{base_prompt} 额外修正要求：{retry_hint}"
@@ -603,3 +643,33 @@ def _coerce_review_score(value: object) -> float:
     except (TypeError, ValueError):
         return 1.0
     return max(0.0, min(1.0, score))
+
+
+def _infer_tutorial_step_stage(step: dict) -> str:
+    text = f"{step.get('title', '')} {step.get('description', '')} {step.get('image_prompt', '')}"
+    if any(token in text for token in ["醒花", "修剪", "去叶", "剪花脚"]):
+        return "prep"
+    if any(token in text for token in ["骨架", "定型", "结构", "高低", "线条"]):
+        return "framework"
+    if any(token in text for token in ["主花", "重心", "焦点", "中心"]):
+        return "main"
+    if any(token in text for token in ["层次", "辅花", "配花", "叶材", "填入", "补入"]):
+        return "layering"
+    if any(token in text for token in ["收口", "包装", "绑带", "整理", "完成"]):
+        return "finish"
+    return "general"
+
+
+def _build_tutorial_image_fallback_note(
+    step: dict,
+    stage: str,
+    issues: list[str],
+    review_text: str,
+) -> str:
+    base_note = TUTORIAL_STAGE_FALLBACK_NOTES.get(stage, TUTORIAL_STAGE_FALLBACK_NOTES["general"])
+    issue_text = "；".join([item for item in issues if item][:2])
+    if issue_text:
+        return f"{base_note} 本次图片主要问题：{issue_text}。"
+    if review_text:
+        return f"{base_note} 本次图片未采用，原因：{review_text}。"
+    return base_note

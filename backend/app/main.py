@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,7 +21,16 @@ load_environment()
 BASE_DIR = Path(__file__).resolve().parent
 MOCK_ASSET_DIR = BASE_DIR / "data" / "mock_assets"
 LIBRARY_ASSET_DIR = BASE_DIR.parent.parent / "images"
-UPLOAD_DIR = BASE_DIR.parent.parent / "uploads"
+
+
+def _resolve_upload_dir() -> Path:
+    configured = Path(os.getenv("UPLOAD_DIR", "./uploads"))
+    if not configured.is_absolute():
+        configured = BASE_DIR.parent.parent / configured
+    return configured.resolve()
+
+
+UPLOAD_DIR = _resolve_upload_dir()
 
 
 def create_app() -> FastAPI:

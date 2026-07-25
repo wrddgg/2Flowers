@@ -68,6 +68,8 @@ class BouquetResult(BaseModel):
     planned_flowers: list[FlowerMaterialPlan] = Field(default_factory=list)
     recognized_flowers: list[FlowerInfo] = Field(default_factory=list)
     flowers: list[FlowerInfo] = Field(default_factory=list)
+    flower_recognition_status: str = "planned_fallback"
+    flower_recognition_summary: str = ""
     scene_preset: ScenePreset | None = None
     style_preset: StylePreset | None = None
     explanation: str = ""

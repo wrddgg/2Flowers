@@ -220,6 +220,21 @@ FLOWER_RECOGNITION_SYSTEM_PROMPT = (
     "只输出严格 JSON。"
 )
 
+FLOWER_NAME_PREFIXES = [
+    "浅粉",
+    "深蓝",
+    "暖白",
+    "香槟",
+    "奶油",
+    "重瓣",
+    "白",
+    "粉",
+    "蓝",
+    "橙",
+    "黄",
+    "红",
+]
+
 
 class ImageGenerationProvider(Protocol):
     def generate(
@@ -1191,12 +1206,20 @@ def _enrich_bouquet_results(
             fallback_flowers=fallback_flowers,
         )
         flowers = recognized_flowers or fallback_flowers
+        recognition_status = _resolve_flower_recognition_status(flowers)
+        recognition_summary = _build_flower_recognition_summary(
+            flowers=flowers,
+            planned_flowers=planned_flowers,
+            recognition_status=recognition_status,
+        )
         enriched.append(
             result.model_copy(
                 update={
                     "planned_flowers": planned_flowers,
                     "recognized_flowers": flowers,
                     "flowers": flowers,
+                    "flower_recognition_status": recognition_status,
+                    "flower_recognition_summary": recognition_summary,
                     "scene_preset": plan.scene_preset if plan else _normalize_scene_preset(request.selected_scene, request.mode),
                     "style_preset": plan.style_preset if plan else _normalize_style_preset(request.selected_style, "atmosphere"),
                     "explanation": plan.explanation if plan else "",
@@ -1386,14 +1409,19 @@ def _normalize_recognized_flowers(
     for item in anchors:
         if not isinstance(item, dict):
             continue
-        flower_name = str(item.get("name") or "").strip()
-        category = _normalize_material_category(item.get("category"), flower_name)
-        if not flower_name or category_counts[category] >= FLOWER_CATEGORY_LIMITS[category]:
+        raw_flower_name = str(item.get("name") or "").strip()
+        category = _normalize_material_category(item.get("category"), raw_flower_name)
+        if not raw_flower_name or category_counts[category] >= FLOWER_CATEGORY_LIMITS[category]:
             continue
-        if not _is_allowed_recognized_name(flower_name, planned_flowers):
+        flower_name = _resolve_allowed_recognized_name(raw_flower_name, category, planned_flowers)
+        if not flower_name:
             continue
         placement_zone, fallback_point = _resolve_material_anchor_position(category, category_counts[category], plan)
         point = _normalize_anchor_point(item.get("point"), fallback_point)
+        raw_visible_reason = str(item.get("visible_reason") or "").strip()
+        visible_reason = raw_visible_reason or "图像中可见该类花材的代表花头。"
+        if flower_name != raw_flower_name:
+            visible_reason = f"{visible_reason} 名称已按当前方案收敛为“{flower_name}”。"
         recognized.append(
             _build_anchor_flower(
                 result_id=result_id,
@@ -1406,7 +1434,7 @@ def _normalize_recognized_flowers(
                 plan=plan,
                 detection_origin="recognized",
                 source_hint="image_recognition",
-                visible_reason=str(item.get("visible_reason") or "").strip(),
+                visible_reason=visible_reason,
             )
         )
         category_counts[category] += 1
@@ -1588,11 +1616,45 @@ def _normalize_material_category(value: object, flower_name: str) -> str:
     return _classify_flower_material_category(flower_name)
 
 
-def _is_allowed_recognized_name(flower_name: str, planned_flowers: list[FlowerMaterialPlan]) -> bool:
-    if flower_name in FLOWER_LIBRARY:
-        return True
-    planned_species = {name for material in planned_flowers for name in material.species}
-    return flower_name in planned_species
+def _resolve_allowed_recognized_name(
+    flower_name: str,
+    category: str,
+    planned_flowers: list[FlowerMaterialPlan],
+) -> str | None:
+    allowed_species = _allowed_species_for_category(category, planned_flowers)
+    if not allowed_species:
+        return flower_name if flower_name in FLOWER_LIBRARY else None
+    if flower_name in allowed_species:
+        return flower_name
+
+    raw_canonical = _canonicalize_flower_name(flower_name)
+    exact_family_matches = [
+        candidate for candidate in allowed_species
+        if _canonicalize_flower_name(candidate) == raw_canonical
+    ]
+    if exact_family_matches:
+        return exact_family_matches[0]
+
+    if flower_name in FLOWER_LIBRARY and _classify_flower_material_category(flower_name) == category:
+        return flower_name
+    return None
+
+
+def _allowed_species_for_category(category: str, planned_flowers: list[FlowerMaterialPlan]) -> list[str]:
+    for material in planned_flowers:
+        if material.category == category:
+            return list(material.species)
+    return []
+
+
+def _canonicalize_flower_name(flower_name: str) -> str:
+    canonical = str(flower_name).strip()
+    while True:
+        matched_prefix = next((prefix for prefix in FLOWER_NAME_PREFIXES if canonical.startswith(prefix)), "")
+        if not matched_prefix or len(canonical) <= len(matched_prefix):
+            break
+        canonical = canonical[len(matched_prefix):]
+    return canonical or str(flower_name).strip()
 
 
 def _normalize_anchor_point(value: object, fallback_point: list[float]) -> list[float]:
@@ -1613,6 +1675,29 @@ def _normalize_anchor_confidence(value: object) -> float:
     except (TypeError, ValueError):
         confidence = 0.78
     return max(0.0, min(1.0, confidence))
+
+
+def _resolve_flower_recognition_status(flowers: list[FlowerInfo]) -> str:
+    if any(flower.detection_origin == "recognized" for flower in flowers):
+        return "recognized"
+    return "planned_fallback"
+
+
+def _build_flower_recognition_summary(
+    *,
+    flowers: list[FlowerInfo],
+    planned_flowers: list[FlowerMaterialPlan],
+    recognition_status: str,
+) -> str:
+    planned_categories = "、".join(material.category_label for material in planned_flowers) or "主花材"
+    recognized_count = sum(1 for flower in flowers if flower.detection_origin == "recognized")
+    fallback_count = sum(1 for flower in flowers if flower.detection_origin != "recognized")
+    if recognition_status == "recognized":
+        return (
+            f"本次已基于最终生成图识别出 {recognized_count} 个代表花锚点，"
+            f"其余 {fallback_count} 个锚点由当前方案的 {planned_categories} 结构补齐。"
+        )
+    return f"本次未启用生成后识别，当前锚点由方案规划的 {planned_categories} 结构提供。"
 
 
 def _collect_variant_flower_candidates(
