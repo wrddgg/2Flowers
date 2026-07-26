@@ -6,7 +6,7 @@
           <path d="M15 5l-7 7 7 7" />
         </svg>
       </button>
-      <button class="capsule-close light" @click="goTo('feed')" aria-label="退出">
+      <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#2d4a3e" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
@@ -35,6 +35,7 @@
         <div class="card-body">
           <p class="cb-kicker">灵感来自</p>
           <h3 class="cb-title">「{{ a?.title || '未命名画面' }}」</h3>
+          <span v-if="store.isRemakeCard" class="remake-badge">复刻花束</span>
           <div class="cb-palette" v-if="a?.palette">
             <span v-for="(c, i) in a.palette" :key="i" :style="{ background: c }"></span>
           </div>
@@ -59,30 +60,20 @@
         <p class="emotion-copy">{{ emotion.save_card.copy }}</p>
         <p class="emotion-target">{{ emotion.gift_card.target }}</p>
         <p class="emotion-reason">{{ emotion.gift_card.reason }}</p>
-        <div class="emotion-options" v-if="emotion.own_card?.candidates?.length">
-          <div v-for="item in emotion.own_card.candidates" :key="item.option_type" class="emotion-option">
-            <img :src="item.image_url" alt="" />
-            <div>
-              <p class="eo-title">{{ item.title }}</p>
-              <p class="eo-sub">{{ item.bouquet_title }}</p>
-              <p class="eo-reason">{{ item.reason }}</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- 操作 -->
       <div class="actions fade-up" style="animation-delay:.12s">
         <button class="ghost-btn" @click="saveCard">保存卡片</button>
-        <button class="primary-btn" @click="goTo('tutorial')">查看制作教程</button>
+        <button class="primary-btn" @click="goTo('remake-plan')">想要制作</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
-import { store, goTo } from '../store'
+import { ref, computed, onMounted } from 'vue'
+import { store, goTo, exitToFeed } from '../store'
 import BouquetSvg from '../components/BouquetSvg.vue'
 import { buildEmotion } from '../api'
 
@@ -226,6 +217,18 @@ onMounted(async () => {
   font-weight: 800;
   letter-spacing: 2px;
 }
+.remake-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(61, 107, 87, 0.12);
+  border: 1px solid rgba(61, 107, 87, 0.3);
+  color: var(--brand-deep);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
 .cb-palette {
   margin-top: 12px;
   display: flex;
@@ -322,17 +325,41 @@ onMounted(async () => {
 
 .emotion-option {
   display: flex;
+  align-items: flex-start;
   gap: 10px;
   background: rgba(255, 255, 255, 0.8);
+  border: 1.5px solid transparent;
   border-radius: 14px;
-  padding: 10px;
+  padding: 12px;
+  text-align: left;
+  transition: all 0.18s ease;
 }
-
-.emotion-option img {
-  width: 72px;
-  height: 72px;
-  border-radius: 10px;
-  object-fit: cover;
+.emotion-option.active {
+  border-color: var(--brand-deep);
+  background: rgba(61, 107, 87, 0.08);
+}
+.eo-radio {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #c4b6a4;
+  flex-shrink: 0;
+  position: relative;
+  transition: border-color 0.18s ease;
+}
+.emotion-option.active .eo-radio {
+  border-color: var(--brand-deep);
+}
+.emotion-option.active .eo-radio::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--brand-deep);
+}
+.eo-text {
+  flex: 1;
 }
 
 .eo-title {

@@ -7,7 +7,7 @@
         </svg>
       </button>
       <span class="topbar-title">局部共创编辑</span>
-      <button class="capsule-close light" @click="goTo('feed')" aria-label="退出">
+      <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#1a1a1a" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
@@ -65,7 +65,7 @@
         <img :src="resultImageUrl" class="result-image" alt="编辑结果" />
         <div class="action-row">
           <button class="ghost-btn" @click="resetResult">重做</button>
-          <button class="primary-btn" @click="applyResult">应用到花束</button>
+          <button class="primary-btn" @click="applyResult">确定</button>
         </div>
       </section>
     </div>
@@ -87,7 +87,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { editImage } from '../api'
-import { goTo, store } from '../store'
+import { goTo, store, exitToFeed } from '../store'
 
 const canvasRef = ref(null)
 const brushSize = ref(28)
@@ -386,13 +386,8 @@ async function submitEdit() {
     })
     genProgress.value = 100
     resultImageUrl.value = result.imageUrl
-    statusText.value = result.requestId ? `生成完成 · ${result.requestId}` : '生成完成。'
-    // 生成成功后应用并进入花束页
-    store.editedBouquetImage = result.imageUrl
-    setTimeout(() => {
-      submitting.value = false
-      goTo('bouquet')
-    }, 450)
+    statusText.value = result.requestId ? `生成完成 · ${result.requestId}` : '生成完成，确认后应用到花束。'
+    submitting.value = false
   } catch (error) {
     errorText.value = error.message || '生成失败。'
     submitting.value = false

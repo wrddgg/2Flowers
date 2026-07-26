@@ -7,7 +7,7 @@
           <path d="M15 5l-7 7 7 7" />
         </svg>
       </button>
-      <button class="capsule-close light" @click="goTo('feed')" aria-label="退出">
+      <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#2d4a3e" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
@@ -97,7 +97,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { store, goTo } from '../store'
+import { store, goTo, exitToFeed } from '../store'
 import { analyzeImage } from '../api'
 
 const sheetVisible = ref(false)
@@ -147,6 +147,17 @@ async function submit() {
     store.selectedBouquetIndex = 0
     store.editedBouquetImage = ''
     store.emotion = null
+    store.resumePage = '' // 新创作开始，清空旧的恢复点
+    store.isRemakeCard = false // 新创作为普通花束卡
+    store.remakePreviewImage = ''
+    store.remakePlan = null
+    store.remakeResult = null
+    store.tutorial = null
+    store.tutorialPhase = ''
+    store.tutorialStepIndex = 0
+    store.compareImage = ''
+    store.workPhoto = ''
+    store.shareCard = null
     goTo('analysis')
   } finally {
     submitting.value = false
@@ -210,8 +221,6 @@ async function submit() {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  /* 白色花纹 -> 墨绿 */
-  filter: brightness(0) saturate(100%) invert(27%) sepia(12%) saturate(1400%) hue-rotate(95deg) brightness(0.9) contrast(1.05);
 }
 .brand-name {
   font-size: 30px;

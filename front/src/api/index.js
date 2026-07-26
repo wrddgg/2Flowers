@@ -100,15 +100,25 @@ function normalizeFlowers(flowers = []) {
     [0.62, 0.66]
   ]
 
-  return flowers.map((flower, index) => ({
-    ...flower,
-    name: flower.name,
-    category: normalizeFlowerCategory(flower),
-    role: flower.type || '花材',
-    function: flower.role || '承接整体气质',
-    point: defaultPoints[index] || [0.5, 0.5],
-    confidence: Math.max(0.72, 0.94 - index * 0.05)
-  }))
+  return flowers.map((flower, index) => {
+    // 优先使用后端视觉模型返回的 0-1 归一化坐标，缺失时才用默认点位兜底
+    const rawPoint = Array.isArray(flower.point) && flower.point.length >= 2
+      ? [Number(flower.point[0]), Number(flower.point[1])]
+      : null
+    const validPoint = rawPoint && rawPoint.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)
+      ? rawPoint
+      : (defaultPoints[index] || [0.5, 0.5])
+    return {
+      ...flower,
+      name: flower.name,
+      category: normalizeFlowerCategory(flower),
+      role: flower.type || '花材',
+      function: flower.role || '承接整体气质',
+      point: validPoint,
+      label_side: flower.label_side || '',
+      confidence: flower.confidence ?? Math.max(0.72, 0.94 - index * 0.05)
+    }
+  })
 }
 
 function normalizeBouquetResult(result, index) {
@@ -170,7 +180,7 @@ export async function searchReferences({ analysis, selectedInterpretationId }) {
   return raw.references || []
 }
 
-export async function generateBouquet({ analysis, selectedInterpretationId, references = [] }) {
+export async function generateBouquet({ analysis, selectedInterpretationId, references = [], selectedScene, selectedStyle }) {
   const selected =
     analysis?.interpretation_options?.find((item) => item.option_id === selectedInterpretationId) ||
     analysis?.interpretation_options?.find((item) => item.option_id === analysis?.recommended_interpretation_id) ||
@@ -187,7 +197,9 @@ export async function generateBouquet({ analysis, selectedInterpretationId, refe
       selected_reference_ids: references.map((item) => item.reference_id),
       selected_interpretation_id: selected?.option_id || analysis?.recommended_interpretation_id || null,
       selected_interpretation_label: selected?.label || null,
-      generation_goals: selected?.alignment_axes || []
+      generation_goals: selected?.alignment_axes || [],
+      ...(selectedScene ? { selected_scene: selectedScene } : {}),
+      ...(selectedStyle ? { selected_style: selectedStyle } : {})
     })
   })
 
@@ -204,6 +216,19 @@ export async function buildEmotion({ resultId, mode, voiceContext = '' }) {
       result_id: resultId,
       mode,
       voice_context: voiceContext
+    })
+  })
+}
+
+export async function remakePreview({ resultId, mode, optionType, voiceContext = '', budgetLevel = 'auto' }) {
+  return requestJson('/api/emotion/remake-preview', {
+    method: 'POST',
+    body: JSON.stringify({
+      result_id: resultId,
+      mode,
+      option_type: optionType,
+      voice_context: voiceContext,
+      budget_level: budgetLevel
     })
   })
 }

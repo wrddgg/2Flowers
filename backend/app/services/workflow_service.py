@@ -355,9 +355,15 @@ def _generate_step_image(task_id: str, index: int, step: dict, flowers_text: str
                 image_status = "done"
                 break
         if image_status != "done":
-            image_status = "fallback"
-            image_review = image_review or "教程配图未通过审核"
-            image_fallback_note = _build_tutorial_image_fallback_note(step, stage, image_review_issues, image_review)
+            # 审核未全过但图片已生成：仍使用最后一张生成的图，避免用户看不到任何图
+            if local_path and local_path.exists():
+                image_url = public_upload_url(local_path)
+                image_status = "done"
+                image_review = image_review or "教程配图已生成（审核未完全通过，已采用）"
+            else:
+                image_status = "fallback"
+                image_review = image_review or "教程配图未通过审核"
+                image_fallback_note = _build_tutorial_image_fallback_note(step, stage, image_review_issues, image_review)
     except Exception as exc:
         image_url = ""
         stage = _infer_tutorial_step_stage(step)
@@ -617,11 +623,11 @@ def _normalize_tutorial_review_result(result: dict[str, object]) -> dict[str, ob
     summary = str(result.get("review_summary") or "").strip()
     passed = bool(result.get("pass"))
 
+    # 放宽审核：仅在有明确 blocking_issues 或分数过低时才否决；
+    # 单项 *_ok=False 不再直接否决（避免细节问题导致全军覆没）
     if blocking_issues:
         passed = False
-    if score < 0.75:
-        passed = False
-    if any(result.get(key) is False for key in ["action_ok", "composition_ok", "botany_ok", "reference_consistency_ok"]):
+    if score < 0.5:
         passed = False
 
     combined_issues = issues + [item for item in blocking_issues if item not in issues]

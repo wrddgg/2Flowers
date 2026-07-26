@@ -26,7 +26,7 @@
           </svg>
         </button>
         <span class="topbar-title">制作教程</span>
-        <button class="capsule-close light" @click="goTo('feed')" aria-label="退出">
+        <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#1a1a1a" stroke-width="2.2" stroke-linecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
@@ -49,10 +49,15 @@
             <p class="step-count">STEP {{ current.step }} / {{ steps.length }}</p>
             <h3 class="step-title">{{ current.title }}</h3>
 
-            <!-- 步骤示意图（mock 用插画块；接后端后用 image_url） -->
+            <!-- 步骤示意图 -->
             <div class="step-illustration">
-              <template v-if="current.image_url && !isMockImg(current.image_url)">
-                <!-- 图片加载完成前：骨架占位 + 加载指示 -->
+              <!-- 图片正在生成中 -->
+              <div v-if="isImageGenerating(current)" class="step-illu-placeholder step-illu-loading" :style="{ background: illuBg(stepIndex) }">
+                <span class="illu-spinner"></span>
+                <p class="illu-prompt">示意图正在生成中…</p>
+              </div>
+              <!-- 图片已生成 -->
+              <template v-else-if="current.image_url && !isMockImg(current.image_url)">
                 <div v-show="!imgLoaded" class="step-illu-placeholder step-illu-loading" :style="{ background: illuBg(stepIndex) }">
                   <span class="illu-spinner"></span>
                   <p class="illu-prompt">示意图加载中…</p>
@@ -65,6 +70,7 @@
                   @error="imgLoaded = true"
                 />
               </template>
+              <!-- 图片生成失败/无图：占位符 -->
               <div v-else class="step-illu-placeholder" :style="{ background: illuBg(stepIndex) }">
                 <span class="illu-num">{{ current.step }}</span>
                 <p class="illu-prompt">{{ current.image_prompt }}</p>
@@ -98,6 +104,25 @@
       </div>
     </template>
 
+    <!-- ===== 阶段2.5：预览拍摄的照片，确认或重拍 ===== -->
+    <div v-else-if="phase === 'preview'" class="preview-cover">
+      <header class="topbar dark">
+        <span class="preview-title">确认你的作品</span>
+        <button class="capsule-close" @click="exitToFeed" aria-label="退出">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </header>
+      <div class="preview-body">
+        <img :src="previewPhoto" class="preview-img" alt="拍摄的作品" />
+        <div class="preview-actions">
+          <button class="ghost-btn" @click="retakePhoto">重拍</button>
+          <button class="primary-btn" @click="confirmPhoto">确认使用</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 阶段3：生成对比图（进度条） ===== -->
     <div v-else-if="phase === 'composing'" class="loading-cover">
       <div class="loading-card">
@@ -117,7 +142,7 @@
             <path d="M15 5l-7 7 7 7" />
           </svg>
         </button>
-        <button class="capsule-close" @click="goTo('feed')" aria-label="退出">
+        <button class="capsule-close" @click="exitToFeed" aria-label="退出">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
             <path d="M6 6l12 12M18 6L6 18" />
           </svg>
@@ -178,11 +203,12 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import { store, goTo } from '../store'
+import { store, goTo, exitToFeed } from '../store'
 import { generateTutorial, generateShareCard, pollTutorialStatus } from '../api'
 import { composeCompareImage } from '../utils/compose'
 
-const phase = ref('loading') // loading | steps | composing | share
+const phase = ref('loading') // loading | steps | preview | composing | share
+const previewPhoto = ref('')
 const steps = computed(() => store.tutorial?.steps || [])
 const stepIndex = ref(0)
 const current = computed(() => steps.value[stepIndex.value])
@@ -195,6 +221,13 @@ watch(
     imgLoaded.value = false
   }
 )
+
+// 同步教程进度到 store（供持久化，页面重载后恢复）
+watch([phase, stepIndex, compareImage], () => {
+  store.tutorialPhase = phase.value
+  store.tutorialStepIndex = stepIndex.value
+  store.compareImage = compareImage.value
+})
 
 const workInput = ref(null)
 const progress = ref(0)
@@ -210,10 +243,25 @@ const rotating = computed(() => flowers.value[rotateIndex.value % Math.max(flowe
 let rotateTimer = null
 let tutorialPollTimer = null
 
-const flowerNames = computed(() => flowers.value.map((f) => f.name))
+// 花材清单：复刻流程用 remake plan 重新规划的花材（轻量/氛围版花种有变化），否则用原花束花材
+const flowerNames = computed(() => {
+  const planFlowers = store.remakePlan?.selected_flowers
+  if (store.isRemakeCard && Array.isArray(planFlowers) && planFlowers.length) {
+    return planFlowers
+  }
+  return flowers.value.map((f) => f.name)
+})
 
 function isMockImg(url) {
   return url.startsWith('/mock/')
+}
+
+// 图片是否正在生成中（无图且状态为 pending/processing）
+function isImageGenerating(step) {
+  if (!step) return false
+  if (step.image_url && !isMockImg(step.image_url)) return false
+  const status = (step.image_status || '').toLowerCase()
+  return status === 'pending' || status === 'processing' || status === 'running' || status === ''
 }
 
 function illuBg(i) {
@@ -229,10 +277,10 @@ function illuBg(i) {
 async function loadTutorial() {
   rotateTimer = setInterval(() => {
     rotateIndex.value++
-  }, 1400)
+  }, 2000)
   try {
     const tutorial = await generateTutorial({
-      bouquetImage: store.editedBouquetImage || currentResult.value?.bouquet_image || '',
+      bouquetImage: store.remakePreviewImage || store.editedBouquetImage || currentResult.value?.bouquet_image || '',
       flowers: flowerNames.value,
       withImages: true
     })
@@ -274,6 +322,14 @@ async function onWorkPhoto(e) {
   const file = e.target.files[0]
   if (!file) return
   const dataUrl = await fileToDataUrl(file)
+  // 先让用户预览照片，选择确认或重拍
+  previewPhoto.value = dataUrl
+  phase.value = 'preview'
+}
+
+// 确认照片，生成对比图
+async function confirmPhoto() {
+  const dataUrl = previewPhoto.value
   store.workPhoto = dataUrl
 
   // 进度条阶段
@@ -283,10 +339,13 @@ async function onWorkPhoto(e) {
     progress.value = Math.min(progress.value + Math.random() * 14 + 6, 96)
   }, 180)
 
+  // 对比图：要做的花（AI花束图） vs 用户做的花
+  const targetImage = store.remakePreviewImage || store.editedBouquetImage || currentResult.value?.bouquet_image || store.sourceImage
+
   try {
     const [card, composed] = await Promise.all([
-      generateShareCard({ before: store.sourceImage, after: dataUrl, title: store.analysis?.title || '' }),
-      composeCompareImage(store.sourceImage, dataUrl, store.analysis?.title || '')
+      generateShareCard({ before: targetImage, after: dataUrl, title: store.analysis?.title || '' }),
+      composeCompareImage(targetImage, dataUrl, store.analysis?.title || '')
     ])
     store.shareCard = card
     compareImage.value = card.card_image || composed
@@ -297,6 +356,14 @@ async function onWorkPhoto(e) {
   } finally {
     clearInterval(timer)
   }
+}
+
+// 重拍
+function retakePhoto() {
+  previewPhoto.value = ''
+  phase.value = 'steps'
+  // 重新调起摄像头
+  setTimeout(() => shootWork(), 100)
 }
 
 function fileToDataUrl(file) {
@@ -322,7 +389,24 @@ function shareToDouyin() {
   )
 }
 
-onMounted(loadTutorial)
+onMounted(() => {
+  // 页面重载恢复：已有教程数据且有保存的阶段，直接恢复到对应阶段，不重新生成
+  if (store.tutorial && store.tutorialPhase) {
+    phase.value = store.tutorialPhase
+    stepIndex.value = store.tutorialStepIndex || 0
+    compareImage.value = store.compareImage || ''
+    if (store.tutorialPhase === 'share' && store.shareCard) {
+      bgmOptions.value = store.shareCard.bgm_options || []
+      selectedBgm.value = bgmOptions.value[0]?.id || ''
+    }
+    // 教程图片还在生成中则继续轮询
+    if (store.tutorial.task_id && store.tutorial.status === 'processing') {
+      startTutorialPolling(store.tutorial.task_id)
+    }
+    return
+  }
+  loadTutorial()
+})
 onBeforeUnmount(() => {
   if (rotateTimer) clearInterval(rotateTimer)
   if (tutorialPollTimer) clearInterval(tutorialPollTimer)
@@ -349,6 +433,60 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   padding: 30px;
+}
+
+/* 照片预览确认 */
+.preview-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: #1a1512;
+  display: flex;
+  flex-direction: column;
+}
+.preview-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1px;
+}
+.preview-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px calc(var(--safe-bottom) + 20px);
+  gap: 18px;
+  overflow: hidden;
+}
+.preview-img {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+  border-radius: 16px;
+  background: #000;
+}
+.preview-actions {
+  display: flex;
+  gap: 12px;
+}
+.preview-actions .ghost-btn,
+.preview-actions .primary-btn {
+  flex: 1;
+  padding: 15px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.preview-actions .ghost-btn {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+.preview-actions .primary-btn {
+  background: var(--brand-deep);
+  color: #fff;
 }
 .loading-card {
   width: 100%;

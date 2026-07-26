@@ -140,6 +140,51 @@ def text2image(prompt: str, out_path: str, *, size: str = "1K") -> str:
     return _download_image(remote_url, out_path)
 
 
+def image2image(ref_image_url: str, prompt: str, out_path: str, *, size: str = "1K") -> str:
+    """图生图：参考图 + 提示词生成新图（wanx multimodal-generation）。"""
+    if is_test_mode() or not has_wan_image_config():
+        raise RuntimeError("image model unavailable")
+
+    task_id = _create_image2image_task(ref_image_url, prompt, size=size)
+    remote_url = _wait_image_url(task_id)
+    return _download_image(remote_url, out_path)
+
+
+def _create_image2image_task(ref_image_url: str, prompt: str, *, size: str) -> str:
+    payload = {
+        "model": os.getenv("WAN_IMAGE_MODEL", "wan2.7-image"),
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image": ref_image_url},
+                        {"text": prompt},
+                    ],
+                }
+            ]
+        },
+        "parameters": {"size": size, "n": 1, "watermark": False},
+    }
+    with httpx.Client(timeout=120.0) as client:
+        response = client.post(
+            f"{_dashscope_base_url().rstrip('/')}/api/v1/services/aigc/image-generation/generation",
+            headers={
+                "Authorization": f"Bearer {_api_key()}",
+                "Content-Type": "application/json",
+                "X-DashScope-Async": "enable",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+
+    data = response.json()
+    task_id = (data.get("output") or {}).get("task_id")
+    if not task_id:
+        raise RuntimeError(f"create image2image task failed: {str(data)[:500]}")
+    return task_id
+
+
 def _create_image_task(prompt: str, *, size: str) -> str:
     payload = {
         "model": os.getenv("WAN_IMAGE_MODEL", "wan2.7-image"),

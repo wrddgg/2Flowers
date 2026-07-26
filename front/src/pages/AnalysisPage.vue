@@ -7,7 +7,7 @@
       <div class="bg-mask"></div>
     </div>
 
-    <button class="capsule-close" @click="goTo('feed')" aria-label="退出">
+    <button class="capsule-close" @click="exitToFeed" aria-label="退出">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
         <path d="M6 6l12 12M18 6L6 18" />
       </svg>
@@ -62,16 +62,50 @@
         </div>
       </section>
 
+      <!-- 场景与风格选择 -->
+      <section class="preset-picker fade-up" style="animation-delay:.18s">
+        <div class="picker-block">
+          <div class="picker-head">
+            <p class="picker-title">这束花用在什么场景？</p>
+            <span class="picker-tip">决定花量与礼仪感</span>
+          </div>
+          <div class="chip-row">
+            <button
+              v-for="s in sceneOptions"
+              :key="s"
+              class="chip"
+              :class="{ active: selectedScene === s }"
+              @click="selectedScene = s"
+            >{{ s }}</button>
+          </div>
+        </div>
+        <div class="picker-block">
+          <div class="picker-head">
+            <p class="picker-title">选择花束风格</p>
+            <span class="picker-tip">决定形态与留白</span>
+          </div>
+          <div class="chip-row">
+            <button
+              v-for="s in styleOptions"
+              :key="s"
+              class="chip"
+              :class="{ active: selectedStyle === s }"
+              @click="selectedStyle = s"
+            >{{ s }}</button>
+          </div>
+        </div>
+      </section>
+
       <!-- 下半：保留 demo 的"日落为礼"引导区 -->
       <section class="bridge fade-up" style="animation-delay:.2s">
         <div class="bridge-card">
-          <p class="bridge-title">以「{{ selectedOption?.label || a.title }}」为灵感</p>
-          <p class="bridge-sub">AI 将为你匹配花材，生成一束只属于这个画面的花</p>
+          <p class="bridge-title">{{ selectedOption?.label || a.title }}</p>
+          <p class="bridge-sub">正在为你匹配花材，生成一束只属于这个画面的花</p>
           <button class="primary-btn" :disabled="generating" @click="generate">
-            {{ generating ? '' : '生成花束' }}
+            {{ generating ? '' : `生成「${selectedScene} · ${selectedStyle}」花束` }}
             <span v-if="generating" class="btn-loading"><span class="spinner"></span></span>
           </button>
-          <p v-if="generating" class="gen-hint">正在挑选花材、构图、配色…</p>
+          <p v-if="generating" class="gen-hint">{{ genHintText }}</p>
         </div>
       </section>
     </div>
@@ -79,11 +113,29 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { store, goTo } from '../store'
+import { ref, computed, onBeforeUnmount } from 'vue'
+import { store, goTo, exitToFeed } from '../store'
 import { generateBouquet, searchReferences } from '../api'
 
 const generating = ref(false)
+
+// 生成中循环提示
+const genHints = ['正在挑选花材…', '正在设计构图…', '正在综合配色…']
+const genHintIndex = ref(0)
+const genHintText = computed(() => genHints[genHintIndex.value])
+let genHintTimer = null
+function startGenHint() {
+  genHintIndex.value = 0
+  clearInterval(genHintTimer)
+  genHintTimer = setInterval(() => {
+    genHintIndex.value = (genHintIndex.value + 1) % genHints.length
+  }, 1600)
+}
+function stopGenHint() {
+  clearInterval(genHintTimer)
+  genHintTimer = null
+}
+onBeforeUnmount(stopGenHint)
 const a = computed(() => store.analysis)
 const options = computed(() => a.value?.interpretation_options || [])
 const selectedInterpretationId = computed({
@@ -96,9 +148,16 @@ const selectedOption = computed(() =>
   options.value.find((item) => item.option_id === selectedInterpretationId.value) || options.value[0] || null
 )
 
+// 场景与风格选项（与后端 ScenePreset / StylePreset 枚举一致）
+const sceneOptions = ['礼宾赠礼', '庆祝纪念', '恋人赠礼', '日常居家']
+const styleOptions = ['东方留白', '法式浪漫', '清新自然', '现代艺术']
+const selectedScene = ref(sceneOptions[0])
+const selectedStyle = ref(styleOptions[0])
+
 async function generate() {
   if (generating.value) return
   generating.value = true
+  startGenHint()
   try {
     store.references = await searchReferences({
       analysis: store.analysis,
@@ -107,13 +166,16 @@ async function generate() {
     store.bouquet = await generateBouquet({
       analysis: store.analysis,
       selectedInterpretationId: selectedInterpretationId.value,
-      references: store.references
+      references: store.references,
+      selectedScene: selectedScene.value,
+      selectedStyle: selectedStyle.value
     })
     store.selectedBouquetIndex = 0
     store.editedBouquetImage = ''
     store.emotion = null
     goTo('bouquet')
   } finally {
+    stopGenHint()
     generating.value = false
   }
 }
@@ -157,11 +219,16 @@ async function generate() {
   position: relative;
   height: 100%;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: calc(var(--safe-top) + 64px) 22px calc(var(--safe-bottom) + 24px);
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 18px;
+}
+/* 内容不足一屏时靠底对齐（保持原视觉）；超过一屏时自然从顶部排开、可滚动 */
+.content::before {
+  content: '';
+  margin-top: auto;
 }
 
 .kicker {
@@ -171,9 +238,14 @@ async function generate() {
 }
 .title {
   margin-top: 8px;
-  font-size: 38px;
+  /* 一行显示完，字号随屏宽自适应缩放 */
+  font-size: clamp(18px, 6.5vw, 38px);
   font-weight: 800;
-  letter-spacing: 3px;
+  letter-spacing: clamp(0.5px, 0.8vw, 3px);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
 }
 
@@ -261,6 +333,64 @@ async function generate() {
   font-size: 14px;
   line-height: 1.7;
   color: rgba(255, 255, 255, 0.88);
+}
+
+.preset-picker {
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.picker-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.picker-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.picker-title {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.92);
+}
+.picker-tip {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+.chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: clamp(11px, 3.1vw, 13px);
+  text-align: center;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+.chip.active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #1e1a1d;
+  border-color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
 }
 
 .bridge-card {

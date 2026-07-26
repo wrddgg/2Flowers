@@ -15,6 +15,8 @@ import AnalysisPage from './pages/AnalysisPage.vue'
 import BouquetPage from './pages/BouquetPage.vue'
 import EditPage from './pages/EditPage.vue'
 import CardPage from './pages/CardPage.vue'
+import RemakePlanPage from './pages/RemakePlanPage.vue'
+import RemakeResultPage from './pages/RemakeResultPage.vue'
 import TutorialPage from './pages/TutorialPage.vue'
 
 const pages = {
@@ -24,6 +26,8 @@ const pages = {
   bouquet: BouquetPage,
   edit: EditPage,
   card: CardPage,
+  'remake-plan': RemakePlanPage,
+  'remake-result': RemakeResultPage,
   tutorial: TutorialPage
 }
 

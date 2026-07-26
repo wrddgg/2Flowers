@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from typing import Any, Protocol
 
@@ -25,7 +27,7 @@ from app.schemas.provider_api import (
 )
 from app.services.workflow_clients import call_multimodal_json, resolve_workflow_text_config
 from app.services.bouquet_generator import BouquetGenerator
-from app.utils.image_assets import to_provider_image_input
+from app.utils.image_assets import to_provider_image_input, upload_root
 from app.utils.text import new_id
 
 SCENE_CONSTRAINTS = {
@@ -408,15 +410,15 @@ class ApiImageGenerationProvider:
         request: ImageGenerationApiRequest,
         variants: list[GenerationVariantPlan],
     ) -> list[GeneratedBouquetImage]:
-        images: list[GeneratedBouquetImage] = []
-        for variant in variants:
+        # 并行生成多个方案图（线程池并发调用生图 API，总耗时≈单张耗时）
+        def _generate_one(variant: GenerationVariantPlan) -> GeneratedBouquetImage | None:
             response = self._call_generation_api(
                 request=request,
                 variant=variant,
             )
             if not response.images:
-                continue
-            image = response.images[0].model_copy(
+                return None
+            return response.images[0].model_copy(
                 update={
                     "prompt_summary": variant.title,
                     "provider_metadata": {
@@ -425,8 +427,46 @@ class ApiImageGenerationProvider:
                     },
                 }
             )
-            images.append(image)
-        return images
+
+        if not variants:
+            return []
+        max_workers = min(len(variants), 3)
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(_generate_one, variants))
+        # 保持原方案顺序，过滤掉失败的
+        images = [image for image in results if image is not None]
+        # 把远程 url / dataURL 统一存到本地 uploads，返回同源路径（前端 canvas 可用）
+        return [self._persist_image_locally(image) for image in images]
+
+    def _persist_image_locally(self, image: GeneratedBouquetImage) -> GeneratedBouquetImage:
+        url = image.image_url or ""
+        try:
+            raw: bytes | None = None
+            if url.startswith("data:"):
+                # dataURL -> 解码
+                header, _, b64 = url.partition(",")
+                if not b64:
+                    return image
+                raw = base64.b64decode(b64)
+            elif url.startswith("http://") or url.startswith("https://"):
+                with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+                    resp = client.get(url)
+                    resp.raise_for_status()
+                    raw = resp.content
+            else:
+                # 已是本地路径（/uploads/... 或 /library/...），直接返回
+                return image
+
+            if not raw:
+                return image
+            save_dir = upload_root() / "generated"
+            save_dir.mkdir(parents=True, exist_ok=True)
+            filename = f"{new_id('gen')}.png"
+            (save_dir / filename).write_bytes(raw)
+            return image.model_copy(update={"image_url": f"/uploads/generated/{filename}"})
+        except Exception:
+            # 本地化失败则保留原地址，不影响主流程
+            return image
 
     def _build_style_prompt(self, request: GenerateBouquetRequest) -> str:
         lines = [
@@ -548,11 +588,14 @@ class ApiImageGenerationProvider:
         endpoint = f"{base_url.rstrip('/')}/images/generations"
         prompt = self._build_generation_prompt(request, variant)
         size = self._map_doubao_size(request.generation_constraints.aspect_ratio)
+        # 提示词优化模式：fast（极速，牺牲部分质量）/ standard（标准）。仅 Seedream 5.0 pro/4.0 支持 fast
+        optimize_mode = os.getenv("DOUBAO_OPTIMIZE_MODE", "fast").lower()
         payload: dict[str, Any] = {
             "model": model,
             "prompt": prompt,
             "response_format": "url",
             "watermark": False,
+            "optimize_prompt_options": {"mode": optimize_mode},
         }
         if size:
             payload["size"] = size

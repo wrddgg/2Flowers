@@ -13,7 +13,8 @@ from app.schemas.emotion import (
     RemakeSubstitute,
     SaveCard,
 )
-from app.services.workflow_clients import create_result_path, public_upload_url, text2image
+from app.services.workflow_clients import create_result_path, image2image, public_upload_url, text2image
+from app.utils.image_assets import to_provider_image_input
 from app.utils.scoring import overlap_score
 
 
@@ -129,7 +130,7 @@ class EmotionBuilder:
                 reason=self._build_reason(voice_context, result.tags),
             ),
             own_card=OwnCard(
-                options=["同感觉现货版", "预算友好版", "轻量桌花版"],
+                options=["完美复刻版", "氛围复刻版", "轻量复刻版"],
                 candidates=own_candidates,
             ),
         )
@@ -188,12 +189,24 @@ class EmotionBuilder:
             for candidate in reference_candidates
             if str(candidate.get("mode")) == "flower"
         ]
+        # 候选库为空时，基于当前花束构造兜底候选，确保三个复刻方案都能生成
+        if not normalized_candidates:
+            normalized_candidates = [
+                {
+                    "reference_id": f"fallback_{result.result_id}",
+                    "mode": "flower",
+                    "title": result.title or "当前花束",
+                    "visual_tags": [],
+                    "scene_tags": [],
+                    "emotion_tags": [],
+                }
+            ]
         scored = self._score_candidates(result, voice_context, normalized_candidates)
 
         categories = [
-            ("same_feeling", "同感觉现货版"),
-            ("budget_friendly", "预算友好版"),
-            ("light_table", "轻量桌花版"),
+            ("perfect", "完美复刻版"),
+            ("ambience", "氛围复刻版"),
+            ("lightweight", "轻量复刻版"),
         ]
         used_ids: set[str] = set()
         own_options: list[OwnOption] = []
@@ -264,28 +277,27 @@ class EmotionBuilder:
             visual_tags = list(candidate.get("visual_tags", []))
             scene_tags = list(candidate.get("scene_tags", []))
 
-            if option_type == "same_feeling":
+            if option_type == "perfect":
                 return candidate
-            if option_type == "budget_friendly":
+            if option_type == "ambience":
                 if "野生感" in title or "轻家居感" in visual_tags or "日常关怀" in scene_tags:
                     return candidate
-            if option_type == "light_table":
+            if option_type == "lightweight":
                 if "轻家居感" in visual_tags or "留白" in visual_tags or "日常关怀" in scene_tags:
                     return candidate
 
+        # fallback：候选不足时允许复用，确保三个方案都能生成
         for candidate in scored:
-            reference_id = str(candidate.get("reference_id"))
-            if reference_id not in used_ids:
-                return candidate
+            return candidate
         return None
 
     def _build_option_reason(self, option_type: str, candidate: dict[str, object], voice_context: str) -> str:
         bouquet_title = str(candidate.get("title", "这组花束"))
-        if option_type == "same_feeling":
-            return f"{bouquet_title} 和当前结果的情绪方向最接近，适合直接作为现实承接方案。"
-        if option_type == "budget_friendly":
-            return f"{bouquet_title} 更偏轻量和日常，适合做预算更友好的现实版本。"
-        return f"{bouquet_title} 更适合摆放或轻量拥有，适合转成桌花或小体量版本。"
+        if option_type == "perfect":
+            return f"{bouquet_title} 完整复刻原花束的花材、结构与气质，适合追求还原度的定制。"
+        if option_type == "ambience":
+            return f"{bouquet_title} 保留核心氛围与色彩关系，花材更灵活，适合预算与还原平衡的版本。"
+        return f"{bouquet_title} 转为轻量小体量版本，更适合日常摆放或轻预算拥有。"
 
     def _build_generation_brief(self, option_type: str, candidate: dict[str, object], voice_context: str) -> str:
         bouquet_title = str(candidate.get("title", "当前方案"))
@@ -293,12 +305,12 @@ class EmotionBuilder:
         visual_tags = list(candidate.get("visual_tags", []))
         emotion_tags = list(candidate.get("emotion_tags", []))
         brief_parts = [f"以“{bouquet_title}”为现实承接方向"]
-        if option_type == "same_feeling":
-            brief_parts.append("保留原生成花图的主要情绪和色彩关系")
-        elif option_type == "budget_friendly":
-            brief_parts.append("在保留核心感觉的前提下收束预算与材料复杂度")
+        if option_type == "perfect":
+            brief_parts.append("完整复刻原生成花图的花材、结构、色彩与气质")
+        elif option_type == "ambience":
+            brief_parts.append("保留核心氛围与色彩关系，花材与预算更灵活")
         else:
-            brief_parts.append("把当前花束转成更适合日常摆放和轻量拥有的版本")
+            brief_parts.append("把当前花束转成更适合日常摆放和轻量拥有的轻量版本")
         if voice_context:
             brief_parts.append(f"兼顾用户语境“{voice_context}”")
         tags = scene_tags[:1] + visual_tags[:1] + emotion_tags[:1]
@@ -316,9 +328,9 @@ class EmotionBuilder:
             return requested_budget
 
         flower_count = len({flower.name for flower in result.flowers if flower.name})
-        if option_type == "budget_friendly":
-            return "budget"
-        if option_type == "light_table":
+        if option_type == "ambience":
+            return "balanced"
+        if option_type == "lightweight":
             return "budget" if flower_count <= 2 else "balanced"
         if flower_count >= 4:
             return "premium"
@@ -384,7 +396,7 @@ class EmotionBuilder:
             source_flowers = ["玫瑰", "洋桔梗", "尤加利"]
 
         limit = BUDGET_FLOWER_LIMIT[budget_level]
-        if option_type == "light_table":
+        if option_type == "lightweight":
             limit = min(limit, 2 if budget_level == "budget" else 3)
         selected: list[str] = []
         substitutes: list[RemakeSubstitute] = []
@@ -440,11 +452,11 @@ class EmotionBuilder:
         return normalized, ""
 
     def _build_preserve_points(self, result: BouquetResult, option: OwnOption, budget_level: str) -> list[str]:
-        points = [f"保留“{result.title}”的主色调和整体情绪，不做偏离原图的花材换风格。"] 
-        if option.option_type == "same_feeling":
-            points.append("尽量复刻原花束的轮廓、主花占比和送礼气质，做成更像花店现货的版本。")
-        elif option.option_type == "budget_friendly":
-            points.append("减少花材种类与总支数，但保留最有记忆点的主花和色块关系。")
+        points = [f"保留“{result.title}”的主色调和整体情绪，不做偏离原图的花材换风格。"]
+        if option.option_type == "perfect":
+            points.append("尽量完整复刻原花束的轮廓、主花占比和气质，做成高度还原的定制版本。")
+        elif option.option_type == "ambience":
+            points.append("保留核心氛围与色块关系，花材种类与支数可灵活调整。")
         else:
             points.append("将花束压缩成更适合桌面或轻量摆放的体量，保持正面观感和留白。")
         if result.style_preset:
@@ -473,10 +485,10 @@ class EmotionBuilder:
         substitutes: list[RemakeSubstitute],
     ) -> str:
         base = f"主用 { '、'.join(selected_flowers) } 做现实版本。"
-        if option_type == "light_table":
+        if option_type == "lightweight":
             base += " 结构上更适合做低矮桌花或短束，便于实体摆放。"
-        elif option_type == "budget_friendly":
-            base += " 通过减少花材层级和支数来控制预算，但不牺牲核心氛围。"
+        elif option_type == "ambience":
+            base += " 通过灵活调整花材层级和支数来平衡预算，但不牺牲核心氛围。"
         else:
             base += " 保留更完整的主花层次，优先做成花店可交付的成品花束。"
         if budget_level == "budget":
@@ -490,22 +502,22 @@ class EmotionBuilder:
 
     def _build_estimated_stem_range(self, option_type: str, budget_level: str) -> list[int]:
         base_range = list(BUDGET_STEM_RANGE[budget_level])
-        if option_type == "light_table":
+        if option_type == "lightweight":
             return [max(4, base_range[0] - 2), max(6, base_range[1] - 3)]
         return base_range
 
     def _build_composition_note(self, result: BouquetResult, option_type: str, budget_level: str) -> str:
-        if option_type == "same_feeling":
-            return "维持原卡片花束的主视觉重心与前后层次，只把细节收束到更像现实花店可交付的结构。"
-        if option_type == "budget_friendly":
-            return "保留主花色块和第一眼记忆点，减少外围材料与复杂线条，让结构更简洁耐看。"
+        if option_type == "perfect":
+            return "维持原卡片花束的主视觉重心与前后层次，高度还原原结构，只把细节收束到现实花店可交付。"
+        if option_type == "ambience":
+            return "保留主花色块和第一眼记忆点，花材与线条可灵活调整，让氛围延续且结构耐看。"
         if budget_level == "budget":
             return "优先做低重心、短束或小桌花结构，用更少材料维持正面观感。"
         return "整体压缩成更适合日常摆放的轻量结构，正面观感清晰，轮廓干净。"
 
     def _build_packaging_note(self, result: BouquetResult, option_type: str, budget_level: str) -> str:
         style = result.style_preset or ""
-        if option_type == "light_table":
+        if option_type == "lightweight":
             return "包装尽量简化，可弱化外包装存在感，优先像花店短束或桌花样片。"
         if budget_level == "budget":
             return "建议使用单层韩素纸或牛皮纸等常见包装，不做大面积复杂褶边。"
@@ -530,9 +542,18 @@ class EmotionBuilder:
         packaging_note: str,
         materials_note: str,
     ) -> str:
+        # 三个方案的核心改造指令（差异化）
+        option_directives = {
+            "perfect": "请尽量完整复刻参考图中的花束：保持原有花材种类、数量、结构层次、色彩搭配和包装方式，做到高度还原，只把细节调整到现实可制作。",
+            "ambience": "请保留参考图花束的核心氛围、色彩关系和整体气质，但花材种类和数量可以灵活替换为更易得的材料，不必完全一致，重点是氛围延续。",
+            "lightweight": "请把参考图花束改造成轻量小体量版本：减少花材种类和支数，简化结构，做成适合日常摆放的桌花或短束，保留核心色调但大幅精简。",
+        }
+        directive = option_directives.get(option.option_type, option_directives["perfect"])
+
         lines = [
             "角色：你是高端花店的花艺总监兼接单花艺师，需要把卡片花束转成现实可制作的定制预览图。",
-            "请生成一张用于给花店沟通定制的现实花束预览图。",
+            "请基于提供的参考花束图进行图生图改造，生成一张用于给花店沟通定制的现实花束预览图。",
+            f"改造要求：{directive}",
             "目标不是艺术概念图，而是花店能照着接单和报价的现实样片。",
             "必须是可落地、可采购、符合日常花店制作逻辑的真实花束照片，不要插画感，不要幻想植物。",
             f"目标来源：{result.title}。原始摘要：{result.summary}",
@@ -568,8 +589,13 @@ class EmotionBuilder:
 
     def _generate_remake_preview(self, result: BouquetResult, plan: RemakePlan) -> tuple[str, str]:
         try:
+            # 图生图：以原花束图为参考 + 方案改造提示词，生成基于原图的复刻概念图
+            ref_image = to_provider_image_input(result.image_url) if result.image_url else ""
             output_path = create_result_path("emotion_remake", result.result_id, ".png")
-            generated_path = text2image(plan.preview_prompt, str(output_path), size="1K")
+            if ref_image:
+                generated_path = image2image(ref_image, plan.preview_prompt, str(output_path), size="1K")
+            else:
+                generated_path = text2image(plan.preview_prompt, str(output_path), size="1K")
             return public_upload_url(generated_path), "generated"
         except Exception:
             return result.image_url, "fallback"

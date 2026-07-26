@@ -120,7 +120,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { store, goTo, resetFlow } from '../store'
+import { store, goTo, resetFlow, resumeFlow } from '../store'
 
 const videos = ref([
   {
@@ -238,6 +238,11 @@ function onVideoError(i) {
 }
 
 function enterWwsh() {
+  // 有未完成的创作进度：直接恢复到退出时的页面
+  if (store.resumePage && (store.bouquet || store.analysis)) {
+    resumeFlow()
+    return
+  }
   // 若当前在播放，先暂停并尝试取帧
   const el = videoRefs.value[currentIndex.value]
   if (el && !el.paused) {

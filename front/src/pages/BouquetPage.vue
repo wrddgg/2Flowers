@@ -7,7 +7,7 @@
         </svg>
       </button>
       <span class="topbar-title">你的专属花束</span>
-      <button class="capsule-close light" @click="goTo('feed')" aria-label="退出">
+      <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#1a1a1a" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
         </svg>
@@ -35,12 +35,12 @@
         <div ref="imgBox" class="bouquet-img-box">
           <img v-if="displayImage" :src="displayImage" class="bouquet-img" alt="花束" />
           <BouquetSvg v-else />
-          <!-- 按归一化坐标渲染标签 -->
+          <!-- 按后端视觉模型返回的 0-1 坐标，标签精准贴在花朵旁边 -->
           <button
             v-for="(f, i) in currentResult.flowers"
-            :key="f.name"
+            :key="f.flower_id || f.name"
             class="flower-tag"
-            :class="{ active: i === activeIndex, foliage: f.category === 'foliage' }"
+            :class="[`side-${f.label_side || 'right'}`, { active: i === activeIndex, foliage: f.category === 'foliage' }]"
             :style="tagStyle(f)"
             @click="selectFlower(i)"
           >
@@ -49,6 +49,26 @@
           </button>
         </div>
       </div>
+
+      <!-- 方案生成依据：为什么这样生成 -->
+      <section class="why-section" v-if="hasBasis">
+        <p class="why-title">为什么这样生成</p>
+        <p class="why-text" v-if="currentResult.explanation">{{ currentResult.explanation }}</p>
+        <div class="why-rows">
+          <div class="why-row" v-if="currentResult.fit_scenes?.length">
+            <span class="why-label">适合场景</span>
+            <span class="why-value">{{ currentResult.fit_scenes.join('、') }}</span>
+          </div>
+          <div class="why-row" v-if="currentResult.usage_goal">
+            <span class="why-label">用途目的</span>
+            <span class="why-value">{{ currentResult.usage_goal }}</span>
+          </div>
+          <div class="why-row" v-if="currentResult.reality_advice">
+            <span class="why-label">现实承接</span>
+            <span class="why-value">{{ currentResult.reality_advice }}</span>
+          </div>
+        </div>
+      </section>
 
       <!-- 当前选中花详情卡 -->
       <transition name="flower-switch" mode="out-in">
@@ -64,17 +84,18 @@
         </div>
       </transition>
 
-      <!-- 参考图片（后端生成时使用的参考链接，灰色小框） -->
+      <!-- 参考图片：小标签，点击弹窗看大图 -->
       <section class="ref-section" v-if="currentResult.reference_used?.length">
         <p class="section-title">生成参考</p>
-        <div class="ref-list">
-          <div v-for="ref in currentResult.reference_used" :key="ref.reference_id" class="ref-box">
-            <img :src="ref.cover_url" class="ref-thumb" alt="" />
-            <div class="ref-copy">
-              <span class="ref-title">{{ ref.title }}</span>
-              <span class="ref-url">{{ ref.reason || shortUrl(ref.cover_url) }}</span>
-            </div>
-          </div>
+        <div class="ref-chips">
+          <button
+            v-for="ref in currentResult.reference_used"
+            :key="ref.reference_id"
+            class="ref-chip"
+            @click="openRefPreview(ref)"
+          >
+            <img :src="ref.cover_url" class="ref-chip-thumb" alt="" />
+          </button>
         </div>
       </section>
 
@@ -107,12 +128,24 @@
         <button class="primary-btn" @click="goTo('card')">生成花束卡片</button>
       </div>
     </footer>
+
+    <!-- 参考图大图预览弹窗 -->
+    <transition name="ref-fade">
+      <div v-if="refPreview" class="ref-modal" @click="closeRefPreview">
+        <img :src="refPreview.cover_url" class="ref-modal-img" alt="参考图" @click.stop />
+        <button class="ref-modal-close" @click="closeRefPreview" aria-label="关闭">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
-import { store, goTo } from '../store'
+import { store, goTo, exitToFeed } from '../store'
 import BouquetSvg from '../components/BouquetSvg.vue'
 
 const bouquetResults = computed(() => store.bouquet?.results || [])
@@ -121,6 +154,10 @@ const currentResult = computed(() => bouquetResults.value[selectedIndex.value] |
 const displayImage = computed(() => store.editedBouquetImage || currentResult.value?.bouquet_image || '')
 const activeIndex = ref(0)
 const active = computed(() => currentResult.value?.flowers[activeIndex.value])
+const hasBasis = computed(() =>
+  !!(currentResult.value?.explanation || currentResult.value?.fit_scenes?.length ||
+     currentResult.value?.usage_goal || currentResult.value?.reality_advice)
+)
 
 function selectFlower(i) {
   activeIndex.value = i
@@ -148,6 +185,15 @@ function shortUrl(url) {
   } catch {
     return url.slice(0, 32) + '…'
   }
+}
+
+/* 参考图大图预览 */
+const refPreview = ref(null)
+function openRefPreview(ref) {
+  refPreview.value = ref
+}
+function closeRefPreview() {
+  refPreview.value = null
 }
 </script>
 
@@ -239,14 +285,55 @@ function shortUrl(url) {
   object-fit: cover;
 }
 
-/* 坐标标签 */
+/* 方案生成解读 */
+.why-section {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(61, 107, 87, 0.06);
+  border: 1px solid rgba(61, 107, 87, 0.14);
+}
+.why-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--brand-deep);
+  letter-spacing: 1px;
+}
+.why-text {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #5a4a3d;
+}
+.why-rows {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.why-row {
+  display: flex;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.why-label {
+  flex-shrink: 0;
+  min-width: 56px;
+  font-weight: 700;
+  color: var(--brand-deep);
+}
+.why-value {
+  color: #5a4a3d;
+}
+
+/* 花标签：锚点在花朵精确位置，标签向一侧偏移贴在花旁 */
 .flower-tag {
   position: absolute;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px 5px 7px;
+  padding: 4px 11px 4px 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(4px);
@@ -264,15 +351,22 @@ function shortUrl(url) {
   border-radius: 50%;
   background: var(--accent-deep);
   box-shadow: 0 0 0 3px rgba(212, 133, 154, 0.25);
+  flex-shrink: 0;
 }
 .flower-tag.foliage .tag-dot {
   background: #43aa8b;
   box-shadow: 0 0 0 3px rgba(67, 170, 139, 0.25);
 }
+
+/* 按 label_side 把标签偏移到花朵对应一侧（锚点即花的精确坐标） */
+.flower-tag.side-right { transform: translate(14px, -50%); }
+.flower-tag.side-left  { transform: translate(calc(-100% - 14px), -50%); }
+.flower-tag.side-top   { transform: translate(-50%, calc(-100% - 12px)); }
+.flower-tag.side-bottom{ transform: translate(-50%, 12px); }
+
 .flower-tag.active {
   background: var(--brand-deep);
   color: #fff;
-  transform: translate(-50%, -50%) scale(1.12);
   z-index: 6;
 }
 .flower-tag.active .tag-dot {
@@ -345,40 +439,69 @@ function shortUrl(url) {
   color: #7a6a5c;
 }
 
-/* 参考图灰色小框 */
-.ref-list {
+/* 参考图小标签 */
+.ref-chips {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.ref-box {
+.ref-chip {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid #ddd4c8;
+  box-shadow: 0 4px 12px rgba(90, 60, 40, 0.1);
+  transition: transform 0.18s ease;
+  padding: 0;
+}
+.ref-chip:active {
+  transform: scale(0.94);
+}
+.ref-chip-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 参考图大图弹窗 */
+.ref-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  background: rgba(20, 16, 14, 0.88);
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: #ece7e0;
-  border: 1px solid #ddd4c8;
-  border-radius: 12px;
-  padding: 10px 14px;
+  justify-content: center;
+  padding: 30px;
 }
-.ref-thumb {
-  width: 48px;
-  height: 48px;
-  border-radius: 10px;
-  object-fit: cover;
+.ref-modal-img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 16px;
+  object-fit: contain;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
-.ref-copy {
+.ref-modal-close {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  justify-content: center;
 }
-.ref-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #625346;
+.ref-fade-enter-active,
+.ref-fade-leave-active {
+  transition: opacity 0.2s ease;
 }
-.ref-url {
-  font-size: 12px;
-  color: #8a7d70;
+.ref-fade-enter-from,
+.ref-fade-leave-to {
+  opacity: 0;
 }
 
 /* 花材清单 */
