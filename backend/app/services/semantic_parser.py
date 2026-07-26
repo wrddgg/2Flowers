@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.schemas.mode import ModeType
 from app.schemas.semantic import SemanticResult
-from app.utils.color_palette import build_color_swatches
+from app.utils.color_palette import build_color_swatches, build_dominant_color_palette
 from app.utils.text import contains_any
 
 
@@ -44,6 +44,7 @@ class SemanticParser:
         emotion_tags = list(profile.get("emotion_tags", []))
         visual_tags = list(profile.get("visual_tags", []))
         color_palette = list(profile.get("color_palette", []))
+        dominant_color_palette = list(profile.get("dominant_color_palette", []))
         relation_tags = list(profile.get("relation_tags", []))
 
         if contains_any(voice_text, GIFT_KEYWORDS):
@@ -72,14 +73,22 @@ class SemanticParser:
 
         summary = self._build_summary(mode, scene_tags, emotion_tags, visual_tags, relation_tags, use_intent)
 
+        normalized_color_palette = _unique(color_palette)
+        normalized_visual_tags = _unique(visual_tags)
+        normalized_dominant_colors = _unique(dominant_color_palette) or build_dominant_color_palette(
+            normalized_color_palette,
+            normalized_visual_tags,
+        )
+
         return SemanticResult(
             mode=mode,
             subject_tags=subject_tags,
             scene_tags=_unique(scene_tags),
             emotion_tags=_unique(emotion_tags),
-            visual_tags=_unique(visual_tags),
-            color_palette=color_palette,
-            color_swatches=build_color_swatches(_unique(color_palette), _unique(visual_tags)),
+            visual_tags=normalized_visual_tags,
+            color_palette=normalized_color_palette,
+            dominant_color_palette=normalized_dominant_colors,
+            color_swatches=build_color_swatches(normalized_color_palette, normalized_visual_tags),
             relation_tags=_unique(relation_tags),
             use_intent=use_intent,
             semantic_summary=summary,

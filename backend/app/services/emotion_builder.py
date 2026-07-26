@@ -36,6 +36,18 @@ BUDGET_STEM_RANGE = {
     "budget": [6, 9],
 }
 
+OPTION_TYPE_ALIASES = {
+    "same_feeling": "perfect",
+    "budget_friendly": "ambience",
+    "light_table": "lightweight",
+}
+
+LEGACY_OPTION_TITLES = {
+    "same_feeling": "同感觉现货版",
+    "budget_friendly": "预算友好版",
+    "light_table": "轻量桌花版",
+}
+
 SEASON_LABELS = {
     12: "冬季",
     1: "冬季",
@@ -143,25 +155,35 @@ class EmotionBuilder:
         reference_candidates: list[dict[str, object]],
     ) -> EmotionRemakePreviewResponse:
         own_candidates = self._build_own_candidates(result, request.voice_context, reference_candidates)
-        option = next((item for item in own_candidates if item.option_type == request.option_type), None)
+        requested_option_type = request.option_type
+        canonical_option_type = self._canonicalize_option_type(request.option_type)
+        option = next((item for item in own_candidates if item.option_type == canonical_option_type), None)
         if option is None:
             raise ValueError(f"未知的复刻方案 option_type={request.option_type}")
+        response_option_type = self._response_option_type(requested_option_type, option.option_type)
+        response_option_title = self._response_option_title(requested_option_type, option.title)
+        response_option = option.model_copy(
+            update={
+                "option_type": response_option_type,
+                "title": response_option_title,
+            }
+        )
 
-        budget_level = self._resolve_budget_level(request.budget_level, request.option_type, result)
+        budget_level = self._resolve_budget_level(request.budget_level, canonical_option_type, result)
         plan = self._build_remake_plan(
             result=result,
-            option=option,
+            option=response_option,
             budget_level=budget_level,
             season_month=request.season_month,
         )
         preview_image_url, preview_status = self._generate_remake_preview(result, plan)
         return EmotionRemakePreviewResponse(
-            option_type=option.option_type,
-            option_title=option.title,
+            option_type=response_option.option_type,
+            option_title=response_option.title,
             preview_image_url=preview_image_url,
             preview_status=preview_status,
             budget_level=budget_level,
-            generation_brief=option.generation_brief,
+            generation_brief=response_option.generation_brief,
             plan=plan,
         )
 
@@ -403,7 +425,12 @@ class EmotionBuilder:
         seen_replacements: set[str] = set()
 
         for flower_name in source_flowers:
-            replacement, reason = self._resolve_flower_replacement(flower_name, budget_level, season_month)
+            replacement, reason = self._resolve_flower_replacement(
+                flower_name=flower_name,
+                option_type=option_type,
+                budget_level=budget_level,
+                season_month=season_month,
+            )
             if replacement != flower_name:
                 key = f"{flower_name}->{replacement}"
                 if key not in seen_replacements:
@@ -432,7 +459,9 @@ class EmotionBuilder:
 
     def _resolve_flower_replacement(
         self,
+        *,
         flower_name: str,
+        option_type: str,
         budget_level: str,
         season_month: int | None,
     ) -> tuple[str, str]:
@@ -440,12 +469,12 @@ class EmotionBuilder:
         for rule in FLOWER_SUBSTITUTIONS:
             if not any(keyword in normalized for keyword in rule["keywords"]):
                 continue
-            if season_month is not None and season_month not in rule["months"]:
-                return str(rule["off_season_replacement"]), str(rule["off_season_reason"])
             if budget_level == "budget":
                 return str(rule["budget_replacement"]), str(rule["budget_reason"])
             if budget_level == "balanced" and "蝴蝶兰" in normalized:
                 return str(rule["budget_replacement"]), "平衡预算下优先选择采购更稳定、束形更容易控制的替代花材。"
+            if option_type == "lightweight" and "绣球" in normalized:
+                return str(rule["budget_replacement"]), "轻量版优先保留块面感，用更轻的常见花材承接结构。"
             return normalized, ""
         if budget_level == "budget" and any(keyword in normalized for keyword in ["玫瑰", "蔷薇"]):
             return "喷头玫瑰", "预算版适合用喷头玫瑰保留花量感，同时控制单支成本。"
@@ -459,23 +488,29 @@ class EmotionBuilder:
             points.append("保留核心氛围与色块关系，花材种类与支数可灵活调整。")
         else:
             points.append("将花束压缩成更适合桌面或轻量摆放的体量，保持正面观感和留白。")
+        if budget_level == "budget":
+            points.append("优先减少花材种类与总支数，保留一到两种主花，其他部分用常见配花和叶材完成结构。")
         if result.style_preset:
             points.append(f"构图继续参考“{result.style_preset}”的审美表达，保持画面高级感。")
         elif result.scene_preset:
             points.append(f"整体情境继续贴合“{result.scene_preset}”的使用场景。")
-        if budget_level == "budget":
-            points.append("优先保留一到两种主花，其他部分用常见配花和叶材完成结构。")
         return points[:3]
 
     def _build_seasonality_note(self, season_month: int | None, substitutes: list[RemakeSubstitute]) -> str:
         if season_month is None:
             if substitutes:
-                return "未指定月份，已按常规花店常备花材优先处理，并对难稳定采购的花材做了替代。"
-            return "未指定月份，默认按普通城市花店全年常备花材去做现实复刻。"
+                return "未指定月份，本版优先保留与原花束的相似度，只对预算明显不友好的花材做了必要替代。"
+            return "未指定月份，本版优先保留与原花束的相似度，季节与采购条件仅作为花店沟通提醒。"
         season_name = SEASON_LABELS.get(season_month, "当季")
         if substitutes:
-            return f"按 {season_month} 月（{season_name}）估算，部分短花期或采购波动较大的花材已替换为更常见的同感觉材料。"
-        return f"按 {season_month} 月（{season_name}）估算，当前主要花材基本可在日常花店采购。"
+            return (
+                f"按 {season_month} 月（{season_name}）估算，本版仍优先保留原花束相似度，"
+                "只对预算明显不友好的花材做了必要替代；若本地采购不足，再与花店沟通同色同形备选。"
+            )
+        return (
+            f"按 {season_month} 月（{season_name}）估算，本版优先保留原花束相似度，"
+            "不因季节主动替换主要花材；若当地供应不足，再与花店沟通同色同形备选。"
+        )
 
     def _build_materials_note(
         self,
@@ -488,9 +523,9 @@ class EmotionBuilder:
         if option_type == "lightweight":
             base += " 结构上更适合做低矮桌花或短束，便于实体摆放。"
         elif option_type == "ambience":
-            base += " 通过灵活调整花材层级和支数来平衡预算，但不牺牲核心氛围。"
+            base += " 通过灵活调整花材层级和支数来平衡预算，但优先保留核心氛围与相似度。"
         else:
-            base += " 保留更完整的主花层次，优先做成花店可交付的成品花束。"
+            base += " 保留更完整的主花层次，优先做成花店可交付、同时足够像原花束的成品花束。"
         if budget_level == "budget":
             base += " 包装和叶材建议简化，避免把预算消耗在复杂辅材上。"
         if substitutes:
@@ -545,7 +580,7 @@ class EmotionBuilder:
         # 三个方案的核心改造指令（差异化）
         option_directives = {
             "perfect": "请尽量完整复刻参考图中的花束：保持原有花材种类、数量、结构层次、色彩搭配和包装方式，做到高度还原，只把细节调整到现实可制作。",
-            "ambience": "请保留参考图花束的核心氛围、色彩关系和整体气质，但花材种类和数量可以灵活替换为更易得的材料，不必完全一致，重点是氛围延续。",
+            "ambience": "请保留参考图花束的核心氛围、色彩关系和整体气质，但花材种类和数量可以灵活替换为更易得的材料，不必完全一致，重点是氛围延续和整体相似度。",
             "lightweight": "请把参考图花束改造成轻量小体量版本：减少花材种类和支数，简化结构，做成适合日常摆放的桌花或短束，保留核心色调但大幅精简。",
         }
         directive = option_directives.get(option.option_type, option_directives["perfect"])
@@ -572,7 +607,10 @@ class EmotionBuilder:
             )
             lines.append(f"替代策略：{substitute_text}")
         if season_month is not None:
-            lines.append(f"请按照 {season_month} 月的实际花市供应去控制花材选择和丰度。")
+            lines.append(
+                f"当前按 {season_month} 月做现实估算，但请优先保留与参考花束的相似度，"
+                "不要因为季节因素主动替换主要花材；只有当地明显缺货时，再考虑同色同形替代。"
+            )
         if result.scene_preset:
             lines.append(f"使用情境仍然贴合：{result.scene_preset}。")
         if result.style_preset:
@@ -610,3 +648,17 @@ class EmotionBuilder:
             seen.add(normalized)
             ordered.append(normalized)
         return ordered
+
+    def _canonicalize_option_type(self, option_type: str) -> str:
+        normalized = str(option_type or "").strip()
+        return OPTION_TYPE_ALIASES.get(normalized, normalized)
+
+    def _response_option_type(self, requested_option_type: str, canonical_option_type: str) -> str:
+        normalized = str(requested_option_type or "").strip()
+        if normalized in OPTION_TYPE_ALIASES:
+            return normalized
+        return canonical_option_type
+
+    def _response_option_title(self, requested_option_type: str, canonical_option_title: str) -> str:
+        normalized = str(requested_option_type or "").strip()
+        return LEGACY_OPTION_TITLES.get(normalized, canonical_option_title)

@@ -51,6 +51,7 @@ def _semantic_from_asset_group(group: dict, mode: str) -> SemanticResult:
         emotion_tags=list(group.get("emotion_tags", [])),
         visual_tags=list(group.get("visual_tags", [])),
         color_palette=list(group.get("color_palette", [])),
+        dominant_color_palette=list(group.get("color_palette", []))[:2],
         relation_tags=[group["target_relation"]] if group.get("target_relation") else [],
         use_intent="表达氛围" if mode == "scene" else "gift",
         semantic_summary=str(group.get("summary", "")),
@@ -77,8 +78,10 @@ def test_full_demo_flow() -> None:
     semantic_result = analyze_data["semantic_result"]
     assert semantic_result["color_swatches"]
     assert semantic_result["color_swatches"][0]["hex"].startswith("#")
+    assert len(semantic_result["dominant_color_palette"]) <= 2
     if analyze_data["interpretation_options"]:
         assert analyze_data["interpretation_options"][0]["semantic_result"]["color_swatches"]
+        assert len(analyze_data["interpretation_options"][0]["semantic_result"]["dominant_color_palette"]) <= 2
     reference_response = client.post(
         "/api/reference/search",
         json={
@@ -468,7 +471,7 @@ def test_emotion_remake_preview_returns_plan_and_fallback_image() -> None:
     assert "7 月" in data["plan"]["seasonality_note"]
 
 
-def test_emotion_remake_preview_applies_budget_and_season_substitutions() -> None:
+def test_emotion_remake_preview_prioritizes_similarity_over_seasonality() -> None:
     repository = get_bouquet_repository()
     repository.save_one(
         BouquetResult(
@@ -503,11 +506,12 @@ def test_emotion_remake_preview_applies_budget_and_season_substitutions() -> Non
     data = response.json()
     assert data["budget_level"] == "budget"
     assert data["preview_status"] == "fallback"
-    assert data["plan"]["selected_flowers"] == ["花园玫瑰", "洋桔梗"]
+    assert data["plan"]["selected_flowers"] == ["康乃馨", "单头玫瑰"]
     assert data["plan"]["estimated_stem_range"] == [6, 9]
     assert len(data["plan"]["substitute_flowers"]) >= 2
     assert data["plan"]["substitute_flowers"][0]["source_flower"] == "芍药"
     assert "11 月" in data["plan"]["seasonality_note"]
+    assert "相似度" in data["plan"]["seasonality_note"]
     assert "减少花材种类与总支数" in "".join(data["plan"]["preserve_points"])
     assert "已处理的关键替代包括" in data["plan"]["materials_note"]
     assert "常见包装" in data["plan"]["packaging_note"] or "韩素纸" in data["plan"]["packaging_note"]
@@ -1106,6 +1110,7 @@ def test_variant_planner_prompt_avoids_forced_reference_merging() -> None:
                 scene_tags=["窗边", "雨天"],
                 emotion_tags=["克制", "轻治愈"],
                 visual_tags=["暖灯", "朦胧"],
+                dominant_color_palette=["深蓝", "暖黄"],
                 color_palette=["深蓝", "暖黄"],
                 relation_tags=[],
                 use_intent="表达氛围",
@@ -1129,6 +1134,7 @@ def test_variant_planner_prompt_avoids_forced_reference_merging() -> None:
     assert "主动舍弃某些颜色" in planner_prompt
     assert "species_count_cap" in planner_prompt
     assert "dominant_flower_ratio" in planner_prompt
+    assert "dominant_color_palette" in planner_prompt
 
 
 def test_default_variant_plan_contains_bouquet_form_constraints() -> None:
@@ -1143,6 +1149,7 @@ def test_default_variant_plan_contains_bouquet_form_constraints() -> None:
                 scene_tags=["窗边", "雨天"],
                 emotion_tags=["克制", "轻治愈"],
                 visual_tags=["暖灯", "朦胧"],
+                dominant_color_palette=["深蓝", "暖黄"],
                 color_palette=["深蓝", "暖黄"],
                 relation_tags=[],
                 use_intent="表达氛围",
@@ -1160,6 +1167,105 @@ def test_default_variant_plan_contains_bouquet_form_constraints() -> None:
     assert plan[0].material_richness == "single"
     assert plan[0].species_count_cap <= 2
     assert plan[0].dominant_flower_ratio >= 0.8
+
+
+def test_abstract_scene_generation_disables_references_and_uses_modern_art_template() -> None:
+    provider = ApiImageGenerationProvider()
+    repository = get_content_repository()
+    contract_request = provider.build_api_request(
+        request=GenerateBouquetRequest(
+            mode="scene",
+            semantic_result=SemanticResult(
+                mode="scene",
+                subject_tags=["发布现场"],
+                scene_tags=["展览", "未来"],
+                emotion_tags=["突破", "庆祝"],
+                visual_tags=["抽象", "光效", "流动"],
+                dominant_color_palette=["深蓝", "紫粉"],
+                color_palette=["深蓝", "紫粉", "米白"],
+                relation_tags=["人与技术"],
+                use_intent="celebrate",
+                semantic_summary="一个带倒计时屏幕和霓虹光效的科技发布场景。",
+            ),
+            reference_strategy="light",
+            selected_reference_ids=["flower_blue_white"],
+        ),
+        bouquet_templates=repository.list_bouquet_templates("scene"),
+        reference_map=repository.get_reference_map(),
+    )
+
+    assert contract_request.reference_strategy == "none"
+    assert contract_request.selected_references == []
+    plan = provider._build_default_variant_plan(contract_request)
+    assert plan[0].title == "霓虹场域"
+    assert plan[0].style_preset == "现代艺术"
+
+
+def test_portrait_generation_disables_references_and_uses_portrait_template() -> None:
+    provider = ApiImageGenerationProvider()
+    repository = get_content_repository()
+    contract_request = provider.build_api_request(
+        request=GenerateBouquetRequest(
+            mode="life",
+            semantic_result=SemanticResult(
+                mode="life",
+                subject_tags=["人像拍摄"],
+                scene_tags=["肖像"],
+                emotion_tags=["克制", "高级"],
+                visual_tags=["镜头", "妆造", "特写"],
+                dominant_color_palette=["奶白", "浅粉"],
+                color_palette=["奶白", "浅粉", "灰蓝"],
+                relation_tags=[],
+                use_intent="self",
+                semantic_summary="一张带明显镜头感和妆造色调的人像拍摄输入。",
+            ),
+            reference_strategy="strong",
+            selected_reference_ids=["flower_blue_white"],
+        ),
+        bouquet_templates=repository.list_bouquet_templates("life"),
+        reference_map=repository.get_reference_map(),
+    )
+
+    assert contract_request.reference_strategy == "none"
+    assert contract_request.selected_references == []
+    plan = provider._build_default_variant_plan(contract_request)
+    assert plan[0].title == "镜头气质"
+    assert plan[0].scene_preset == "日常居家"
+
+
+def test_generation_prompt_enforces_no_people_even_with_references() -> None:
+    provider = ApiImageGenerationProvider()
+    repository = get_content_repository()
+    contract_request = provider.build_api_request(
+        request=GenerateBouquetRequest(
+            mode="flower",
+            semantic_result=SemanticResult(
+                mode="flower",
+                subject_tags=["现代艺术花束"],
+                scene_tags=["庆祝"],
+                emotion_tags=["突破"],
+                visual_tags=["雕塑感", "光效"],
+                dominant_color_palette=["深蓝", "紫粉"],
+                color_palette=["深蓝", "紫粉"],
+                relation_tags=[],
+                use_intent="celebrate",
+                semantic_summary="一束适合活动发布的现代花束。",
+            ),
+            reference_strategy="strong",
+            selected_reference_ids=["flower_blue_white"],
+        ),
+        bouquet_templates=repository.list_bouquet_templates("flower"),
+        reference_map=repository.get_reference_map(),
+    )
+
+    prompt = provider._build_generation_prompt(
+        contract_request,
+        provider._build_default_variant_plan(contract_request)[0],
+    )
+    assert "绝对禁令：最终画面只能出现一束花束成品" in prompt
+    assert "严禁出现任何人物" in prompt
+    assert "如果参考图中出现人物" in prompt
+    assert "人物禁令" in prompt
 
 
 def test_strong_reference_payload_keeps_reference_images() -> None:

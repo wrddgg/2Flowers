@@ -71,6 +71,36 @@ def build_color_swatches(color_palette: list[str], visual_tags: list[str]) -> li
     return swatches
 
 
+def build_dominant_color_palette(color_palette: list[str], visual_tags: list[str]) -> list[str]:
+    dominant: list[str] = []
+    seen: set[str] = set()
+
+    for label in color_palette:
+        normalized = str(label or "").strip()
+        if not normalized:
+            continue
+        dedupe_key = resolve_color_hex(normalized) or normalized
+        if dedupe_key in seen:
+            continue
+        dominant.append(normalized)
+        seen.add(dedupe_key)
+        if len(dominant) >= 2:
+            return dominant
+
+    for tag in visual_tags:
+        normalized = str(tag or "").strip()
+        if normalized not in VISUAL_TAG_HEX:
+            continue
+        dedupe_key = VISUAL_TAG_HEX[normalized]
+        if dedupe_key in seen:
+            continue
+        dominant.append(normalized)
+        seen.add(dedupe_key)
+        if len(dominant) >= 2:
+            break
+    return dominant
+
+
 def resolve_color_hex(label: str) -> str | None:
     normalized = str(label or "").strip()
     if not normalized:

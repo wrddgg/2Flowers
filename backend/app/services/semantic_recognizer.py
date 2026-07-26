@@ -17,7 +17,7 @@ from app.schemas.provider_api import ProviderTagTaxonomy, SemanticRecognitionApi
 from app.schemas.semantic import SemanticResult
 from app.services.mode_detector import ModeDetector
 from app.services.semantic_parser import SemanticParser
-from app.utils.color_palette import build_color_swatches
+from app.utils.color_palette import build_color_swatches, build_dominant_color_palette
 from app.utils.image_assets import to_provider_image_input
 from app.utils.text import new_id
 
@@ -225,11 +225,15 @@ class ApiSemanticRecognizer:
             "判断优先级：\n"
             "1. 先识别图中主要元素，可用 element_type 包括：scene、flower、person、portrait、gift_context、global。\n"
             "2. 再判断主解读 mode：scene 表示氛围/空间/景别，flower 表示花束或花艺成品本身，life 表示带有人、关系、送礼对象或人生事件的现实情境。纯人像、自拍、个人气质图，一般仍归入 life，但要在 interpretation_options 中显式给出 portrait/person 视角。\n"
+            "2.1 如果输入是抽象画、抽象纹理、色块构成或缺少明确物体，请优先提取 1 到 2 个占画面大部分面积的 dominant_color_palette 主色调，再结合情绪和质感做解读，不要强行虚构具体物体。\n"
+            "2.2 如果输入是科技活动、发布现场、倒计时屏幕、舞台光效、霓虹装置或数字展演，请优先提取具体场景语义，例如展览、发布、舞台、未来、沉浸式、光效，不要只复述海报口号或抽象哲学词。\n"
+            "2.3 如果输入是人像拍摄、肖像、自拍或带强烈镜头感的人物照片，请重点提取人物气质、妆造色调、拍摄光线、镜头距离和分寸感；后续生花要转译这些感觉，而不是把人物本人生成出来。\n"
             "3. 如果只识别到单一强元素，可直接给出一个主解读；如果存在多种合理视角，必须返回 2 到 3 个 interpretation_options，并用 needs_user_choice 标记是否值得让用户选择。\n"
             "4. interpretation_options 中必须包含一种更综合的 global 或全局视角，用来表达系统对整体气质的理解。\n"
             "5. 先尊重图片里真实可见的信息，再用用户文本补充 use_intent、关系对象和用途，不要让文本覆盖明显的视觉事实。\n"
             "6. 只提取能转译为花艺方案的语义，例如氛围、色调、质感、关系、场景、人物气质和用途；不要沉迷于无关细节、品牌、文字或复杂背景。\n"
-            "6.1 color_palette 表示你观察到并认为值得保留的视觉主色线索，不等于后续每个生花方案都必须同时使用这些颜色。\n"
+            "6.1 dominant_color_palette 只允许输出 1 到 2 个主色，必须是占画面大部分或合占大部分面积的主色调。\n"
+            "6.2 color_palette 表示你观察到并认为值得保留的视觉主色线索与辅助色线索，不等于后续每个生花方案都必须同时使用这些颜色。\n"
             "7. 对每个 interpretation_option，要补充 explanation 和 alignment_axes，说明你是从哪些维度完成花艺转译的，例如色彩对齐、花语对齐、气质对齐、材质对齐、关系语境对齐。\n"
             "8. planner_summary 需要说明为什么保留这些候选解读，以及建议优先尝试哪一个。\n"
             "9. taxonomy 和 candidate_tags 只是候选约束，不是必须照抄；只在确实匹配图片或文本时选择。\n\n"
@@ -237,7 +241,7 @@ class ApiSemanticRecognizer:
             "1. mode 只能是 scene / flower / life。\n"
             "2. confidence 返回 0 到 1 的小数。\n"
             "3. evidence 提供 2 到 4 个短语，说明你为什么这样判断。\n"
-            "4. subject_tags、scene_tags、emotion_tags、visual_tags、relation_tags、color_palette、translation_axes 都尽量短，单项最多 4 个。\n"
+            "4. subject_tags、scene_tags、emotion_tags、visual_tags、relation_tags、color_palette、translation_axes 都尽量短，单项最多 4 个；dominant_color_palette 最多 2 个。\n"
             "5. scene_tags、emotion_tags、visual_tags、relation_tags 尽量优先从 taxonomy 中选；没有合适项时再给自然但简洁的中文标签。\n"
             "6. use_intent 只能是 表达氛围 / gift / self / decorate / celebrate。如果缺乏明确送礼或装饰意图，scene 默认优先考虑“表达氛围”。\n"
             "7. semantic_summary 用 1 句话概括这张图最终想传达并适合被转成花束的感觉。\n"
@@ -253,12 +257,12 @@ class ApiSemanticRecognizer:
             '"needs_user_choice":true,"planner_summary":"...",'
             '"recommended_interpretation_id":"option_scene","subject_tags":["..."],'
             '"scene_tags":["..."],"emotion_tags":["..."],"visual_tags":["..."],'
-            '"color_palette":["..."],"relation_tags":["..."],"translation_axes":["色彩对齐"],'
+            '"dominant_color_palette":["深蓝","暖黄"],"color_palette":["深蓝","暖黄","米白"],"relation_tags":["..."],"translation_axes":["色彩对齐"],'
             '"use_intent":"表达氛围","semantic_summary":"...","raw_caption":"...",'
             '"interpretation_options":[{"option_id":"option_scene","label":"从场景氛围解读","perspective":"scene",'
             '"recommended_mode":"scene","recommended":true,"explanation":"...",'
             '"alignment_axes":["色彩对齐","花语对齐"],"semantic_result":{"mode":"scene","subject_tags":["..."],'
-            '"scene_tags":["..."],"emotion_tags":["..."],"visual_tags":["..."],"color_palette":["..."],'
+            '"scene_tags":["..."],"emotion_tags":["..."],"visual_tags":["..."],"dominant_color_palette":["深蓝"],"color_palette":["..."],'
             '"relation_tags":["..."],"translation_axes":["色彩对齐"],"use_intent":"表达氛围","semantic_summary":"..."}}]}'
         )
 
@@ -315,6 +319,11 @@ class ApiSemanticRecognizer:
         payload = values if isinstance(values, dict) else {}
         color_palette = self._normalize_tags(payload.get("color_palette"), content_profile.get("color_palette", []))
         visual_tags = self._normalize_tags(payload.get("visual_tags"), request.taxonomy.visual_tags)
+        dominant_color_palette = self._normalize_dominant_color_palette(
+            payload.get("dominant_color_palette"),
+            color_palette,
+            visual_tags,
+        )
         return SemanticResult(
             mode=detected_mode,  # type: ignore[arg-type]
             subject_tags=self._normalize_tags(payload.get("subject_tags"), content_profile.get("subject_tags", [])),
@@ -322,6 +331,7 @@ class ApiSemanticRecognizer:
             emotion_tags=self._normalize_tags(payload.get("emotion_tags"), request.taxonomy.emotion_tags),
             visual_tags=visual_tags,
             color_palette=color_palette,
+            dominant_color_palette=dominant_color_palette,
             color_swatches=build_color_swatches(color_palette, visual_tags),
             relation_tags=self._normalize_tags(payload.get("relation_tags"), request.taxonomy.relation_tags),
             use_intent=_normalize_use_intent(payload.get("use_intent")),
@@ -383,6 +393,17 @@ class ApiSemanticRecognizer:
                 )
             )
         return options
+
+    def _normalize_dominant_color_palette(
+        self,
+        values: object,
+        color_palette: list[str],
+        visual_tags: list[str],
+    ) -> list[str]:
+        normalized = _unique(_as_str_list(values))[:2]
+        if normalized:
+            return normalized
+        return build_dominant_color_palette(color_palette, visual_tags)
 
 
 @lru_cache
