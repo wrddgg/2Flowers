@@ -95,6 +95,12 @@ function saveCurrent() {
 }
 
 function goTutorial() {
+  // 清空上次教程的残留状态，避免恢复旧的 preview/share 阶段导致黑屏或显示旧花束教程
+  store.tutorial = null
+  store.tutorialPhase = ''
+  store.tutorialStepIndex = 0
+  store.compareImage = ''
+  store.shareCard = null
   goTo('tutorial')
 }
 

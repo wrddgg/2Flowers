@@ -6,6 +6,7 @@
           <path d="M15 5l-7 7 7 7" />
         </svg>
       </button>
+      <button class="remake-btn" @click="onRemake">重新制作</button>
       <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#2d4a3e" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
@@ -73,13 +74,16 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { store, goTo, exitToFeed } from '../store'
+import { store, goTo, exitToFeed, resetFlow } from '../store'
 import BouquetSvg from '../components/BouquetSvg.vue'
 import { buildEmotion } from '../api'
 
 const a = computed(() => store.analysis)
 const b = computed(() => store.bouquet?.results?.[store.selectedBouquetIndex] || null)
-const displayImage = computed(() => store.editedBouquetImage || b.value?.bouquet_image || '')
+const displayImage = computed(() => {
+  const rid = b.value?.result_id
+  return (rid && store.editedBouquetImages?.[rid]) || b.value?.bouquet_image || ''
+})
 const emotion = computed(() => store.emotion)
 
 const cardNo = computed(() => String(Math.floor(Math.random() * 9000) + 1000))
@@ -97,6 +101,12 @@ const cardMeaning = computed(() => {
 function saveCard() {
   // 演示：真实场景用 html2canvas 或后端接口4生成图片保存
   alert('卡片已保存到相册（演示）')
+}
+
+function onRemake() {
+  if (window.confirm('确定要重新制作吗？当前花束将被清除并回到开始。')) {
+    resetFlow()
+  }
 }
 
 onMounted(async () => {
@@ -388,5 +398,20 @@ onMounted(async () => {
 }
 .actions .primary-btn {
   flex: 1.4;
+}
+
+.remake-btn {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: 56px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(45, 74, 62, 0.08);
+  color: #2d4a3e;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 </style>

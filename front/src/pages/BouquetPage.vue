@@ -7,6 +7,7 @@
         </svg>
       </button>
       <span class="topbar-title">你的专属花束</span>
+      <button class="remake-btn" @click="onRemake">重新制作</button>
       <button class="capsule-close light" @click="exitToFeed" aria-label="退出">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#1a1a1a" stroke-width="2.2" stroke-linecap="round">
           <path d="M6 6l12 12M18 6L6 18" />
@@ -145,13 +146,16 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { store, goTo, exitToFeed } from '../store'
+import { store, goTo, exitToFeed, resetFlow } from '../store'
 import BouquetSvg from '../components/BouquetSvg.vue'
 
 const bouquetResults = computed(() => store.bouquet?.results || [])
 const selectedIndex = computed(() => store.selectedBouquetIndex || 0)
 const currentResult = computed(() => bouquetResults.value[selectedIndex.value] || null)
-const displayImage = computed(() => store.editedBouquetImage || currentResult.value?.bouquet_image || '')
+const currentResultId = computed(() => currentResult.value?.result_id || '')
+const displayImage = computed(
+  () => store.editedBouquetImages?.[currentResultId.value] || currentResult.value?.bouquet_image || ''
+)
 const activeIndex = ref(0)
 const active = computed(() => currentResult.value?.flowers[activeIndex.value])
 const hasBasis = computed(() =>
@@ -165,8 +169,13 @@ function selectFlower(i) {
 
 function selectVariant(i) {
   store.selectedBouquetIndex = i
-  store.editedBouquetImage = ''
   activeIndex.value = 0
+}
+
+function onRemake() {
+  if (window.confirm('确定要重新制作吗？当前花束将被清除并回到开始。')) {
+    resetFlow()
+  }
 }
 
 /* 归一化坐标 -> 百分比定位 */
@@ -236,6 +245,21 @@ function closeRefPreview() {
 .capsule-close.light {
   background: rgba(0, 0, 0, 0.05);
   border-color: transparent;
+}
+
+.remake-btn {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: 56px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: #1a1a1a;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .scroll-body {

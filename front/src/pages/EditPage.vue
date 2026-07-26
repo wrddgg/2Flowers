@@ -108,7 +108,10 @@ const selections = ref([])
 const currentResult = computed(
   () => store.bouquet?.results?.[store.selectedBouquetIndex] || null
 )
-const sourceImageUrl = computed(() => store.editedBouquetImage || currentResult.value?.bouquet_image || '')
+const sourceImageUrl = computed(() => {
+  const rid = currentResult.value?.result_id
+  return (rid && store.editedBouquetImages?.[rid]) || currentResult.value?.bouquet_image || ''
+})
 
 watch(sourceImageUrl, async () => {
   await loadImage()
@@ -410,7 +413,8 @@ function resetResult() {
 
 function applyResult() {
   if (!resultImageUrl.value) return
-  store.editedBouquetImage = resultImageUrl.value
+  const rid = currentResult.value?.result_id
+  if (rid) store.editedBouquetImages[rid] = resultImageUrl.value
   goTo('bouquet')
 }
 </script>

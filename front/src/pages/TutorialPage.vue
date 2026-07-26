@@ -392,10 +392,14 @@ function shareToDouyin() {
 onMounted(() => {
   // 页面重载恢复：已有教程数据且有保存的阶段，直接恢复到对应阶段，不重新生成
   if (store.tutorial && store.tutorialPhase) {
-    phase.value = store.tutorialPhase
+    // preview / composing 依赖未持久化的本地照片与进度，重进无法还原，回退到步骤页
+    let restored = ['preview', 'composing'].includes(store.tutorialPhase) ? 'steps' : store.tutorialPhase
+    // share 阶段需要 shareCard 才完整，缺失则回退到步骤页
+    if (restored === 'share' && !store.shareCard) restored = 'steps'
+    phase.value = restored
     stepIndex.value = store.tutorialStepIndex || 0
     compareImage.value = store.compareImage || ''
-    if (store.tutorialPhase === 'share' && store.shareCard) {
+    if (phase.value === 'share' && store.shareCard) {
       bgmOptions.value = store.shareCard.bgm_options || []
       selectedBgm.value = bgmOptions.value[0]?.id || ''
     }

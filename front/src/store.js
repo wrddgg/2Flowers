@@ -48,6 +48,7 @@ export const store = reactive({
   bouquet: null,
   selectedBouquetIndex: 0,
   editedBouquetImage: '',
+  editedBouquetImages: {},
   emotion: null,
   // 接口3：教程结果
   tutorial: null,
@@ -139,6 +140,7 @@ export function resetFlow() {
   store.bouquet = null
   store.selectedBouquetIndex = 0
   store.editedBouquetImage = ''
+  store.editedBouquetImages = {}
   store.emotion = null
   store.tutorial = null
   store.workPhoto = ''
